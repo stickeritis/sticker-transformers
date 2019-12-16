@@ -5,4 +5,13 @@ authors = ["Daniël de Kok <me@danieldk.eu>"]
 edition = "2018"
 
 [dependencies]
+failure = "0.1"
+hdf5 = "0.5"
 tch = "0.1"
+
+[dev-dependencies]
+approx = "0.3"
+ndarray = { version = "0.13", features = ["approx"] }
+
+[features]
+model-tests = []

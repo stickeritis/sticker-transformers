@@ -14,6 +14,7 @@ in with nixpkgs; mkShell {
 
   buildInputs = [
     curl
+    hdf5
     openssl
   ] ++ lib.optional stdenv.isDarwin darwin.apple_sdk.frameworks.Security;
 
@@ -23,6 +24,10 @@ in with nixpkgs; mkShell {
       tensorflow-bin
     ]))
   ];
+
+  # Unless we use pkg-config, the hdf5-sys build script does not like
+  # it if libraries and includes are in different directories.
+  HDF5_DIR = symlinkJoin { name = "hdf5-join"; paths = [ hdf5.dev hdf5.out ]; };
 
   LIBTORCH = "${danieldk.python3Packages.pytorch.v1_3_1.dev}";
 }
