@@ -1,4 +1,6 @@
-use tch::nn::{Module, ModuleT};
+use std::borrow::Borrow;
+
+use tch::nn::{self, Module, ModuleT, Path};
 use tch::{self, Tensor};
 
 /// Dropout layer.
@@ -15,6 +17,38 @@ impl Dropout {
     /// Drop out elements with probability *p*.
     pub fn new(p: f64) -> Self {
         Dropout { p }
+    }
+}
+
+/// Embedding lookup layer.
+#[derive(Debug)]
+pub struct Embedding(Tensor);
+
+impl Embedding {
+    pub fn new<'a>(
+        vs: impl Borrow<Path<'a>>,
+        name: &str,
+        num_embeddings: i64,
+        embedding_dim: i64,
+    ) -> Self {
+        Embedding(vs.borrow().var(
+            name,
+            &[num_embeddings, embedding_dim],
+            nn::Init::Randn {
+                mean: 0.,
+                stdev: 1.,
+            },
+        ))
+    }
+
+    pub fn from_tensor<'a>(vs: impl Borrow<Path<'a>>, name: &str, tensor: &Tensor) -> Self {
+        Embedding(vs.borrow().var_copy(name, tensor))
+    }
+}
+
+impl Module for Embedding {
+    fn forward(&self, input: &Tensor) -> Tensor {
+        Tensor::embedding(&self.0, input, -1, false, false)
     }
 }
 
@@ -36,6 +70,27 @@ pub struct LayerNorm {
 }
 
 impl LayerNorm {
+    pub(crate) fn new_with_affine<'a>(
+        vs: impl Borrow<Path<'a>>,
+        normalized_shape: impl Into<Vec<i64>>,
+        eps: f64,
+        weight: Tensor,
+        bias: Tensor,
+    ) -> Self {
+        let vs = vs.borrow();
+
+        let normalized_shape = normalized_shape.into();
+
+        LayerNorm {
+            eps,
+            elementwise_affine: true,
+            normalized_shape,
+
+            weight: Some(vs.var_copy("weight", &weight)),
+            bias: Some(vs.var_copy("bias", &bias)),
+        }
+    }
+
     /// Construct a layer normalization layer.
     ///
     /// The mean and standard deviation are computed over the last
@@ -43,19 +98,20 @@ impl LayerNorm {
     /// `normalized_shape`. If `elementwise_affine` is `True`, a
     /// learnable affine transformation of the shape
     /// `normalized_shape` is added after normalization.
-    pub fn new(normalized_shape: impl Into<Vec<i64>>, eps: f64, elementwise_affine: bool) -> Self {
+    pub fn new<'a>(
+        vs: impl Borrow<Path<'a>>,
+        normalized_shape: impl Into<Vec<i64>>,
+        eps: f64,
+        elementwise_affine: bool,
+    ) -> Self {
+        let vs = vs.borrow();
+
         let normalized_shape = normalized_shape.into();
 
         let (weight, bias) = if elementwise_affine {
             (
-                Some(Tensor::ones(
-                    &normalized_shape,
-                    (tch::Kind::Float, tch::Device::Cpu),
-                )),
-                Some(Tensor::zeros(
-                    &normalized_shape,
-                    (tch::Kind::Float, tch::Device::Cpu),
-                )),
+                Some(vs.ones("weight", &normalized_shape)),
+                Some(vs.zeros("bias", &normalized_shape)),
             )
         } else {
             (None, None)
