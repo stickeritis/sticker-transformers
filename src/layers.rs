@@ -1,5 +1,28 @@
-use tch::nn::Module;
+use tch::nn::{Module, ModuleT};
 use tch::{self, Tensor};
+
+/// Dropout layer.
+///
+/// This layer zeros out random elements of a tensor with probability
+/// *p*. Dropout is a form of regularization and prevents
+/// co-adaptation of neurons.
+#[derive(Debug)]
+pub struct Dropout {
+    p: f64,
+}
+
+impl Dropout {
+    /// Drop out elements with probability *p*.
+    pub fn new(p: f64) -> Self {
+        Dropout { p }
+    }
+}
+
+impl ModuleT for Dropout {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+        input.dropout(self.p, train)
+    }
+}
 
 /// Layer that applies layer normalization.
 #[derive(Debug)]
