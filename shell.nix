@@ -17,5 +17,12 @@ in with nixpkgs; mkShell {
     openssl
   ] ++ lib.optional stdenv.isDarwin darwin.apple_sdk.frameworks.Security;
 
+  propagatedBuildInputs = [
+    (python3.withPackages (ps: with ps; [
+      h5py
+      tensorflow-bin
+    ]))
+  ];
+
   LIBTORCH = "${danieldk.python3Packages.pytorch.v1_3_1.dev}";
 }
