@@ -11,6 +11,7 @@ tch = "0.1"
 
 [dev-dependencies]
 approx = "0.3"
+maplit = "1"
 ndarray = { version = "0.13", features = ["approx"] }
 
 [features]

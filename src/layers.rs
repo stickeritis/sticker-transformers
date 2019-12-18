@@ -1,7 +1,33 @@
 use std::borrow::Borrow;
 
-use tch::nn::{self, Module, ModuleT, Path};
+use tch::nn::{self, Linear, Module, ModuleT, Path};
 use tch::{self, Tensor};
+
+/// Trait to place layer tensors in the var store.
+pub trait PlaceInVarStore
+where
+    Self: Sized,
+{
+    /// Place layer tensors in the var store.
+    ///
+    /// This method replaces a layer's tensors by tensors that are
+    /// in the given var store.
+    fn place_in_var_store_inplace<'a>(&mut self, vs: impl Borrow<Path<'a>>);
+
+    /// Place layer tensors in the var store.
+    fn place_in_var_store<'a>(mut self, vs: impl Borrow<Path<'a>>) -> Self {
+        self.place_in_var_store_inplace(vs);
+        self
+    }
+}
+
+impl PlaceInVarStore for Linear {
+    fn place_in_var_store_inplace<'a>(&mut self, vs: impl Borrow<Path<'a>>) {
+        let vs = vs.borrow();
+        self.ws = vs.var_copy("weight", &self.ws);
+        self.bs = vs.var_copy("bias", &self.bs);
+    }
+}
 
 /// Dropout layer.
 ///
@@ -70,15 +96,12 @@ pub struct LayerNorm {
 }
 
 impl LayerNorm {
-    pub(crate) fn new_with_affine<'a>(
-        vs: impl Borrow<Path<'a>>,
+    pub(crate) fn new_with_affine(
         normalized_shape: impl Into<Vec<i64>>,
         eps: f64,
         weight: Tensor,
         bias: Tensor,
     ) -> Self {
-        let vs = vs.borrow();
-
         let normalized_shape = normalized_shape.into();
 
         LayerNorm {
@@ -86,8 +109,8 @@ impl LayerNorm {
             elementwise_affine: true,
             normalized_shape,
 
-            weight: Some(vs.var_copy("weight", &weight)),
-            bias: Some(vs.var_copy("bias", &bias)),
+            weight: Some(weight),
+            bias: Some(bias),
         }
     }
 
@@ -139,5 +162,17 @@ impl Module for LayerNorm {
             self.eps,
             false,
         )
+    }
+}
+
+impl PlaceInVarStore for LayerNorm {
+    fn place_in_var_store_inplace<'a>(&mut self, vs: impl Borrow<Path<'a>>) {
+        let vs = vs.borrow();
+
+        self.weight = self
+            .weight
+            .as_ref()
+            .map(|weight| vs.var_copy("weight", weight));
+        self.bias = self.bias.as_ref().map(|bias| vs.var_copy("bias", bias));
     }
 }
