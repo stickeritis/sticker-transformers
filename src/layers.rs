@@ -48,7 +48,7 @@ impl Dropout {
 
 /// Embedding lookup layer.
 #[derive(Debug)]
-pub struct Embedding(Tensor);
+pub struct Embedding(pub Tensor);
 
 impl Embedding {
     pub fn new<'a>(
@@ -66,9 +66,11 @@ impl Embedding {
             },
         ))
     }
+}
 
-    pub fn from_tensor<'a>(vs: impl Borrow<Path<'a>>, name: &str, tensor: &Tensor) -> Self {
-        Embedding(vs.borrow().var_copy(name, tensor))
+impl PlaceInVarStore for Embedding {
+    fn place_in_var_store_inplace<'a>(&mut self, vs: impl Borrow<Path<'a>>) {
+        self.0 = vs.borrow().var_copy("embeddings", &self.0)
     }
 }
 
