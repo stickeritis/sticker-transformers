@@ -143,42 +143,35 @@ impl LoadFromHDF5 for BertEmbeddings {
     fn load_from_hdf5<'a>(
         vs: impl Borrow<Path<'a>>,
         config: &Self::Config,
-        file: Group,
+        group: Group,
     ) -> Fallible<Self> {
-        let vs = vs.borrow().sub("embeddings");
-
-        let embeddings_group = file.group("bert/embeddings")?;
+        let vs = vs.borrow();
 
         let word_embeddings = load_tensor(
-            embeddings_group.dataset("word_embeddings")?,
+            group.dataset("word_embeddings")?,
             &[config.vocab_size, config.hidden_size],
         )?;
         let position_embeddings = load_tensor(
-            embeddings_group.dataset("position_embeddings")?,
+            group.dataset("position_embeddings")?,
             &[config.max_position_embeddings, config.hidden_size],
         )?;
         let token_type_embeddings = load_tensor(
-            embeddings_group.dataset("token_type_embeddings")?,
+            group.dataset("token_type_embeddings")?,
             &[config.type_vocab_size, config.hidden_size],
         )?;
 
-        let layer_norm_group = embeddings_group.group("LayerNorm")?;
+        let layer_norm_group = group.group("LayerNorm")?;
 
         let weight = load_tensor(layer_norm_group.dataset("gamma")?, &[config.hidden_size])?;
         let bias = load_tensor(layer_norm_group.dataset("beta")?, &[config.hidden_size])?;
 
         Ok(BertEmbeddings {
-            word_embeddings: Embedding::from_tensor(&vs, "word_embeddings", &word_embeddings),
-            position_embeddings: Embedding::from_tensor(
-                &vs,
-                "position_embeddings",
-                &position_embeddings,
-            ),
-            token_type_embeddings: Embedding::from_tensor(
-                &vs,
-                "token_type_embeddings",
-                &token_type_embeddings,
-            ),
+            word_embeddings: Embedding(word_embeddings)
+                .place_in_var_store(vs.sub("word_embeddings")),
+            position_embeddings: Embedding(position_embeddings)
+                .place_in_var_store(vs.sub("position_embeddings")),
+            token_type_embeddings: Embedding(token_type_embeddings)
+                .place_in_var_store(vs.sub("token_type_embeddings")),
 
             layer_norm: LayerNorm::new_with_affine(
                 vec![config.hidden_size],
@@ -186,7 +179,7 @@ impl LoadFromHDF5 for BertEmbeddings {
                 weight,
                 bias,
             )
-            .place_in_var_store(vs),
+            .place_in_var_store(vs.sub("layer_norm")),
             dropout: Dropout::new(config.hidden_dropout_prob),
         })
     }
@@ -596,7 +589,7 @@ mod tests {
         let embeddings = BertEmbeddings::load_from_hdf5(
             vs.root(),
             &german_bert_config,
-            german_bert_file.group("/").unwrap(),
+            german_bert_file.group("bert/embeddings").unwrap(),
         )
         .unwrap();
 
@@ -625,6 +618,33 @@ mod tests {
     }
 
     #[test]
+    fn bert_embeddings_names() {
+        let german_bert_config = german_bert_config();
+        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+
+        let vs = VarStore::new(Device::Cpu);
+        BertEmbeddings::load_from_hdf5(
+            vs.root(),
+            &german_bert_config,
+            german_bert_file.group("bert/embeddings").unwrap(),
+        )
+        .unwrap();
+
+        let variables = varstore_variables(&vs);
+
+        assert_eq!(
+            variables,
+            btreeset![
+                "layer_norm.bias".to_string(),
+                "layer_norm.weight".to_string(),
+                "position_embeddings.embeddings".to_string(),
+                "token_type_embeddings.embeddings".to_string(),
+                "word_embeddings.embeddings".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn bert_layer() {
         let config = german_bert_config();
         let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
@@ -634,7 +654,7 @@ mod tests {
         let embeddings = BertEmbeddings::load_from_hdf5(
             vs.root(),
             &config,
-            german_bert_file.group("/").unwrap(),
+            german_bert_file.group("bert/embeddings").unwrap(),
         )
         .unwrap();
 
