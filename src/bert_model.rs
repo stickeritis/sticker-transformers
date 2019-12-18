@@ -84,6 +84,7 @@ pub struct BertConfig {
     pub layer_norm_eps: f64,
     pub max_position_embeddings: i64,
     pub num_attention_heads: i64,
+    pub num_hidden_layers: i64,
     pub type_vocab_size: i64,
     pub vocab_size: i64,
 }
@@ -182,6 +183,54 @@ impl LoadFromHDF5 for BertEmbeddings {
             .place_in_var_store(vs.sub("layer_norm")),
             dropout: Dropout::new(config.hidden_dropout_prob),
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct BertEncoder {
+    layers: Vec<BertLayer>,
+}
+
+impl BertEncoder {
+    /// Apply the encoder.
+    ///
+    /// Returns the hidden states and attention per layer.
+    pub fn forward_t(&self, hidden_states: &Tensor, train: bool) -> Vec<(Tensor, Tensor)> {
+        let mut all_hidden_states = Vec::with_capacity(self.layers.len());
+
+        let mut hidden_states = CowTensor::Borrowed(hidden_states);
+        for layer in &self.layers {
+            let states_attention = layer.forward_t(&hidden_states, train);
+
+            hidden_states = CowTensor::Owned(states_attention.0.shallow_clone());
+            all_hidden_states.push(states_attention);
+        }
+
+        all_hidden_states
+    }
+}
+
+impl LoadFromHDF5 for BertEncoder {
+    type Config = BertConfig;
+
+    fn load_from_hdf5<'a>(
+        vs: impl Borrow<Path<'a>>,
+        config: &Self::Config,
+        group: Group,
+    ) -> Fallible<Self> {
+        let vs = vs.borrow();
+
+        let layers = (0..config.num_hidden_layers)
+            .map(|idx| {
+                BertLayer::load_from_hdf5(
+                    vs.sub(format!("layer_{}", idx)),
+                    config,
+                    group.group(&format!("layer_{}", idx))?,
+                )
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(BertEncoder { layers })
     }
 }
 
@@ -555,7 +604,7 @@ mod tests {
     use tch::nn::VarStore;
     use tch::{Device, Tensor};
 
-    use crate::bert_model::{BertConfig, BertEmbeddings, BertLayer};
+    use crate::bert_model::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
     use crate::hdf5_model::LoadFromHDF5;
 
     fn german_bert_config() -> BertConfig {
@@ -568,9 +617,31 @@ mod tests {
             layer_norm_eps: 1e-12,
             max_position_embeddings: 512,
             num_attention_heads: 12,
+            num_hidden_layers: 12,
             type_vocab_size: 2,
             vocab_size: 30000,
         }
+    }
+
+    fn layer_variables() -> BTreeSet<String> {
+        btreeset![
+            "attention.output.dense.bias".to_string(),
+            "attention.output.dense.weight".to_string(),
+            "attention.output.layer_norm.bias".to_string(),
+            "attention.output.layer_norm.weight".to_string(),
+            "attention.self.key.bias".to_string(),
+            "attention.self.key.weight".to_string(),
+            "attention.self.query.bias".to_string(),
+            "attention.self.query.weight".to_string(),
+            "attention.self.value.bias".to_string(),
+            "attention.self.value.weight".to_string(),
+            "intermediate.dense.bias".to_string(),
+            "intermediate.dense.weight".to_string(),
+            "output.dense.bias".to_string(),
+            "output.dense.weight".to_string(),
+            "output.layer_norm.bias".to_string(),
+            "output.layer_norm.weight".to_string()
+        ]
     }
 
     fn varstore_variables(vs: &VarStore) -> BTreeSet<String> {
@@ -645,6 +716,82 @@ mod tests {
     }
 
     #[test]
+    fn bert_encoder() {
+        let config = german_bert_config();
+        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+
+        let vs = VarStore::new(Device::Cpu);
+
+        let embeddings = BertEmbeddings::load_from_hdf5(
+            vs.root(),
+            &config,
+            german_bert_file.group("/").unwrap(),
+        )
+        .unwrap();
+
+        let encoder = BertEncoder::load_from_hdf5(
+            vs.root(),
+            &config,
+            german_bert_file.group("bert/encoder").unwrap(),
+        )
+        .unwrap();
+
+        // Word pieces of: Veruntreute die AWO spendengeld ?
+        let pieces = Tensor::of_slice(&[133i64, 1937, 14010, 30, 32, 26939, 26962, 12558, 2739, 2])
+            .reshape(&[1, 10]);
+
+        let embeddings = embeddings.forward_t(&pieces, None, None, false);
+
+        let all_hidden_states = encoder.forward_t(&embeddings, false);
+
+        let summed_last_hidden =
+            all_hidden_states
+                .last()
+                .unwrap()
+                .0
+                .sum1(&[-1], false, tch::Kind::Float);
+
+        let sums: ArrayD<f32> = (&summed_last_hidden).try_into().unwrap();
+
+        assert_abs_diff_eq!(
+            sums,
+            (array![[
+                -1.6283, 0.2473, -0.2388, -0.4124, -0.4058, 1.4587, -0.3182, -0.9507, -0.1781,
+                0.3792
+            ]])
+            .into_dyn(),
+            epsilon = 1e-4
+        );
+    }
+
+    #[test]
+    fn bert_encoder_names() {
+        // Verify that the encoders's names correspond between loaded
+        // and newly-constructed models.
+        let config = german_bert_config();
+        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+
+        let vs_loaded = VarStore::new(Device::Cpu);
+        BertEncoder::load_from_hdf5(
+            vs_loaded.root(),
+            &config,
+            german_bert_file.group("bert/encoder").unwrap(),
+        )
+        .unwrap();
+        let loaded_variables = varstore_variables(&vs_loaded);
+
+        let mut encoder_variables = BTreeSet::new();
+        let layer_variables = layer_variables();
+        for idx in 0..config.num_hidden_layers {
+            for layer_variable in &layer_variables {
+                encoder_variables.insert(format!("layer_{}.{}", idx, layer_variable));
+            }
+        }
+
+        assert_eq!(loaded_variables, encoder_variables);
+    }
+
+    #[test]
     fn bert_layer() {
         let config = german_bert_config();
         let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
@@ -704,26 +851,6 @@ mod tests {
         .unwrap();
         let loaded_variables = varstore_variables(&vs_loaded);
 
-        assert_eq!(
-            loaded_variables,
-            btreeset![
-                "attention.output.dense.bias".to_string(),
-                "attention.output.dense.weight".to_string(),
-                "attention.output.layer_norm.bias".to_string(),
-                "attention.output.layer_norm.weight".to_string(),
-                "attention.self.key.bias".to_string(),
-                "attention.self.key.weight".to_string(),
-                "attention.self.query.bias".to_string(),
-                "attention.self.query.weight".to_string(),
-                "attention.self.value.bias".to_string(),
-                "attention.self.value.weight".to_string(),
-                "intermediate.dense.bias".to_string(),
-                "intermediate.dense.weight".to_string(),
-                "output.dense.bias".to_string(),
-                "output.dense.weight".to_string(),
-                "output.layer_norm.bias".to_string(),
-                "output.layer_norm.weight".to_string()
-            ]
-        );
+        assert_eq!(loaded_variables, layer_variables());
     }
 }
