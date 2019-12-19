@@ -725,7 +725,7 @@ mod tests {
         let embeddings = BertEmbeddings::load_from_hdf5(
             vs.root(),
             &config,
-            german_bert_file.group("/").unwrap(),
+            german_bert_file.group("/bert/embeddings").unwrap(),
         )
         .unwrap();
 
