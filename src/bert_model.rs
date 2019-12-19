@@ -194,19 +194,19 @@ pub struct BertEncoder {
 impl BertEncoder {
     /// Apply the encoder.
     ///
-    /// Returns the hidden states and attention per layer.
-    pub fn forward_t(&self, hidden_states: &Tensor, train: bool) -> Vec<(Tensor, Tensor)> {
-        let mut all_hidden_states = Vec::with_capacity(self.layers.len());
+    /// Returns the output and attention per layer.
+    pub fn forward_t(&self, input: &Tensor, train: bool) -> Vec<BertLayerOutput> {
+        let mut all_layer_outputs = Vec::with_capacity(self.layers.len());
 
-        let mut hidden_states = CowTensor::Borrowed(hidden_states);
+        let mut hidden_states = CowTensor::Borrowed(input);
         for layer in &self.layers {
-            let states_attention = layer.forward_t(&hidden_states, train);
+            let layer_output = layer.forward_t(&hidden_states, train);
 
-            hidden_states = CowTensor::Owned(states_attention.0.shallow_clone());
-            all_hidden_states.push(states_attention);
+            hidden_states = CowTensor::Owned(layer_output.output.shallow_clone());
+            all_layer_outputs.push(layer_output);
         }
 
-        all_hidden_states
+        all_layer_outputs
     }
 }
 
@@ -287,15 +287,25 @@ pub struct BertLayer {
 }
 
 impl BertLayer {
-    pub fn forward_t(&self, hidden_states: &Tensor, train: bool) -> (Tensor, Tensor) {
-        let (attention_output, attention_probs) = self.attention.forward_t(hidden_states, train);
+    pub fn forward_t(&self, input: &Tensor, train: bool) -> BertLayerOutput {
+        let (attention_output, attention) = self.attention.forward_t(input, train);
         let intermediate_output = self.intermediate.forward(&attention_output);
-        let layer_output = self
+        let output = self
             .output
             .forward_t(&intermediate_output, &attention_output, train);
 
-        (layer_output, attention_probs)
+        BertLayerOutput { output, attention }
     }
+}
+
+/// Output of a BERT layer.
+#[derive(Debug)]
+pub struct BertLayerOutput {
+    /// The output of the layer.
+    pub output: Tensor,
+
+    /// The layer attentions.
+    pub attention: Tensor,
 }
 
 impl LoadFromHDF5 for BertLayer {
@@ -748,7 +758,7 @@ mod tests {
             all_hidden_states
                 .last()
                 .unwrap()
-                .0
+                .output
                 .sum1(&[-1], false, tch::Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_last_hidden).try_into().unwrap();
@@ -818,9 +828,9 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, None, None, false);
 
-        let (hidden_layer0, _) = layer0.forward_t(&embeddings, false);
+        let layer_output0 = layer0.forward_t(&embeddings, false);
 
-        let summed_layer0 = hidden_layer0.sum1(&[-1], false, tch::Kind::Float);
+        let summed_layer0 = layer_output0.output.sum1(&[-1], false, tch::Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_layer0).try_into().unwrap();
 
