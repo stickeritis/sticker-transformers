@@ -19,13 +19,15 @@ use std::iter;
 
 use failure::{Fail, Fallible};
 use hdf5::Group;
-use tch::nn::{Linear, Module, ModuleT, Path};
+use serde::{Deserialize, Serialize};
+use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{Kind, Tensor};
 
 use crate::activations;
 use crate::cow::CowTensor;
 use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
 use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+use crate::traits::{LayerAttention, LayerOutput};
 
 /// Bert attention block.
 #[derive(Debug)]
@@ -35,6 +37,15 @@ pub struct BertAttention {
 }
 
 impl BertAttention {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
+        let vs = vs.borrow();
+
+        BertAttention {
+            self_attention: BertSelfAttention::new(vs.sub("self"), config),
+            self_output: BertSelfOutput::new(vs.sub("output"), config),
+        }
+    }
+
     /// Apply the attention block.
     ///
     /// Outputs the hidden states and the attention probabilities.
@@ -81,12 +92,14 @@ impl LoadFromHDF5 for BertAttention {
 }
 
 /// Bert model configuration.
-#[derive(Debug)]
+#[serde(default)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct BertConfig {
     pub attention_probs_dropout_prob: f64,
     pub hidden_act: String,
     pub hidden_dropout_prob: f64,
     pub hidden_size: i64,
+    pub initializer_range: f64,
     pub intermediate_size: i64,
     pub layer_norm_eps: f64,
     pub max_position_embeddings: i64,
@@ -94,6 +107,25 @@ pub struct BertConfig {
     pub num_hidden_layers: i64,
     pub type_vocab_size: i64,
     pub vocab_size: i64,
+}
+
+impl Default for BertConfig {
+    fn default() -> Self {
+        BertConfig {
+            attention_probs_dropout_prob: 0.1,
+            hidden_act: "gelu".to_owned(),
+            hidden_dropout_prob: 0.1,
+            hidden_size: 768,
+            initializer_range: 0.02,
+            intermediate_size: 3072,
+            layer_norm_eps: 1e-12,
+            max_position_embeddings: 512,
+            num_attention_heads: 12,
+            num_hidden_layers: 12,
+            type_vocab_size: 2,
+            vocab_size: 30000,
+        }
+    }
 }
 
 /// Construct the embeddings from word, position and token_type embeddings.
@@ -108,6 +140,50 @@ pub struct BertEmbeddings {
 }
 
 impl BertEmbeddings {
+    /// Construct new Bert embeddings with the given variable store
+    /// and Bert configuration.
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
+        let vs = vs.borrow();
+
+        let word_embeddings = Embedding::new(
+            vs.sub("word_embeddings"),
+            "embeddings",
+            config.vocab_size,
+            config.hidden_size,
+        );
+
+        let position_embeddings = Embedding::new(
+            vs.sub("position_embeddings"),
+            "embeddings",
+            config.max_position_embeddings,
+            config.hidden_size,
+        );
+
+        let token_type_embeddings = Embedding::new(
+            vs.sub("token_type_embeddings"),
+            "embeddings",
+            config.type_vocab_size,
+            config.hidden_size,
+        );
+
+        let layer_norm = LayerNorm::new(
+            vs.sub("layer_norm"),
+            vec![config.hidden_size],
+            config.layer_norm_eps,
+            true,
+        );
+
+        let dropout = Dropout::new(config.hidden_dropout_prob);
+
+        BertEmbeddings {
+            word_embeddings,
+            position_embeddings,
+            token_type_embeddings,
+            layer_norm,
+            dropout,
+        }
+    }
+
     pub fn forward_t(
         &self,
         input_ids: &Tensor,
@@ -199,6 +275,16 @@ pub struct BertEncoder {
 }
 
 impl BertEncoder {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Result<Self, BertError> {
+        let vs = vs.borrow();
+
+        let layers = (0..config.num_hidden_layers)
+            .map(|layer| BertLayer::new(vs.sub(format!("layer_{}", layer)), config))
+            .collect::<Result<_, _>>()?;
+
+        Ok(BertEncoder { layers })
+    }
+
     /// Apply the encoder.
     ///
     /// Returns the output and attention per layer. The (optional)
@@ -255,6 +341,29 @@ pub struct BertIntermediate {
     activation: Box<dyn Module>,
 }
 
+impl BertIntermediate {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Result<Self, BertError> {
+        let vs = vs.borrow();
+
+        let activation = match bert_activations(&config.hidden_act) {
+            Some(activation) => activation,
+            None => return Err(BertError::unknown_activation_function(&config.hidden_act)),
+        };
+
+        Ok(BertIntermediate {
+            activation,
+            dense: bert_linear(
+                vs.sub("dense"),
+                config,
+                config.hidden_size,
+                config.intermediate_size,
+                "weight",
+                "bias",
+            ),
+        })
+    }
+}
+
 impl Module for BertIntermediate {
     fn forward(&self, input: &Tensor) -> Tensor {
         let hidden_states = self.dense.forward(input);
@@ -302,6 +411,16 @@ pub struct BertLayer {
 }
 
 impl BertLayer {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Result<Self, BertError> {
+        let vs = vs.borrow();
+
+        Ok(BertLayer {
+            attention: BertAttention::new(vs.sub("attention"), config),
+            intermediate: BertIntermediate::new(vs.sub("intermediate"), config)?,
+            output: BertOutput::new(vs.sub("output"), config),
+        })
+    }
+
     pub fn forward_t(
         &self,
         input: &Tensor,
@@ -326,6 +445,18 @@ pub struct BertLayerOutput {
 
     /// The layer attentions.
     pub attention: Tensor,
+}
+
+impl LayerAttention for BertLayerOutput {
+    fn layer_attention(&self) -> &Tensor {
+        &self.attention
+    }
+}
+
+impl LayerOutput for BertLayerOutput {
+    fn layer_output(&self) -> &Tensor {
+        &self.output
+    }
 }
 
 impl LoadFromHDF5 for BertLayer {
@@ -364,6 +495,32 @@ pub struct BertOutput {
 }
 
 impl BertOutput {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
+        let vs = vs.borrow();
+
+        let dense = bert_linear(
+            vs.sub("dense"),
+            config,
+            config.intermediate_size,
+            config.hidden_size,
+            "weight",
+            "bias",
+        );
+        let dropout = Dropout::new(config.hidden_dropout_prob);
+        let layer_norm = LayerNorm::new(
+            vs.sub("layer_norm"),
+            vec![config.hidden_size],
+            config.layer_norm_eps,
+            true,
+        );
+
+        BertOutput {
+            dense,
+            dropout,
+            layer_norm,
+        }
+    }
+
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
         let hidden_states = self.dropout.forward_t(&hidden_states, train);
@@ -427,6 +584,49 @@ pub struct BertSelfAttention {
 }
 
 impl BertSelfAttention {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
+        let vs = vs.borrow();
+
+        let attention_head_size = config.hidden_size / config.num_attention_heads;
+        let all_head_size = config.num_attention_heads * attention_head_size;
+
+        let key = bert_linear(
+            vs.sub("key"),
+            config,
+            config.hidden_size,
+            all_head_size,
+            "weight",
+            "bias",
+        );
+        let query = bert_linear(
+            vs.sub("query"),
+            config,
+            config.hidden_size,
+            all_head_size,
+            "weight",
+            "bias",
+        );
+        let value = bert_linear(
+            vs.sub("value"),
+            config,
+            config.hidden_size,
+            all_head_size,
+            "weight",
+            "bias",
+        );
+
+        BertSelfAttention {
+            all_head_size,
+            attention_head_size,
+            num_attention_heads: config.num_attention_heads,
+
+            dropout: Dropout::new(config.attention_probs_dropout_prob),
+            key,
+            query,
+            value,
+        }
+    }
+
     /// Apply self-attention.
     ///
     /// Return the contextualized representations and attention
@@ -561,6 +761,32 @@ pub struct BertSelfOutput {
 }
 
 impl BertSelfOutput {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
+        let vs = vs.borrow();
+
+        let dense = bert_linear(
+            vs.sub("dense"),
+            config,
+            config.hidden_size,
+            config.hidden_size,
+            "weight",
+            "bias",
+        );
+        let dropout = Dropout::new(config.hidden_dropout_prob);
+        let layer_norm = LayerNorm::new(
+            vs.sub("layer_norm"),
+            vec![config.hidden_size],
+            config.layer_norm_eps,
+            true,
+        );
+
+        BertSelfOutput {
+            dense,
+            dropout,
+            layer_norm,
+        }
+    }
+
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
         let hidden_states = self.dropout.forward_t(&hidden_states, train);
@@ -618,6 +844,29 @@ fn bert_activations(activation_name: &str) -> Option<Box<dyn Module>> {
     }
 }
 
+fn bert_linear<'a>(
+    vs: impl Borrow<Path<'a>>,
+    config: &BertConfig,
+    in_features: i64,
+    out_features: i64,
+    weight_name: &str,
+    bias_name: &str,
+) -> Linear {
+    let vs = vs.borrow();
+
+    Linear {
+        ws: vs.var(
+            weight_name,
+            &[out_features, in_features],
+            Init::Randn {
+                mean: 0.,
+                stdev: config.initializer_range,
+            },
+        ),
+        bs: vs.var(bias_name, &[out_features], Init::Const(0.)),
+    }
+}
+
 #[derive(Clone, Debug, Fail)]
 pub enum BertError {
     #[fail(
@@ -663,6 +912,7 @@ mod tests {
             hidden_act: "gelu".to_string(),
             hidden_dropout_prob: 0.1,
             hidden_size: 768,
+            initializer_range: 0.02,
             intermediate_size: 3072,
             layer_norm_eps: 1e-12,
             max_position_embeddings: 512,
@@ -751,13 +1001,13 @@ mod tests {
 
     #[test]
     fn bert_embeddings_names() {
-        let german_bert_config = german_bert_config();
+        let config = german_bert_config();
         let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         BertEmbeddings::load_from_hdf5(
             vs.root(),
-            &german_bert_config,
+            &config,
             german_bert_file.group("bert/embeddings").unwrap(),
         )
         .unwrap();
@@ -774,6 +1024,11 @@ mod tests {
                 "word_embeddings.embeddings".to_string()
             ]
         );
+
+        // Compare against fresh embeddings layer.
+        let vs_fresh = VarStore::new(Device::Cpu);
+        let _ = BertEmbeddings::new(vs_fresh.root(), &config);
+        assert_eq!(variables, varstore_variables(&vs_fresh));
     }
 
     #[test]
@@ -904,6 +1159,11 @@ mod tests {
         }
 
         assert_eq!(loaded_variables, encoder_variables);
+
+        // Compare against fresh encoder.
+        let vs_fresh = VarStore::new(Device::Cpu);
+        let _ = BertEncoder::new(vs_fresh.root(), &config).unwrap();
+        assert_eq!(loaded_variables, varstore_variables(&vs_fresh));
     }
 
     #[test]
@@ -966,6 +1226,10 @@ mod tests {
         .unwrap();
         let loaded_variables = varstore_variables(&vs_loaded);
 
+        let vs_fresh = VarStore::new(Device::Cpu);
+        let _ = BertLayer::new(vs_fresh.root(), &config);
+
         assert_eq!(loaded_variables, layer_variables());
+        assert_eq!(loaded_variables, varstore_variables(&vs_fresh));
     }
 }
