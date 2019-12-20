@@ -26,6 +26,7 @@ use crate::activations;
 use crate::cow::CowTensor;
 use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
 use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+use crate::util::LogitsMask;
 
 /// Bert attention block.
 #[derive(Debug)]
@@ -38,8 +39,15 @@ impl BertAttention {
     /// Apply the attention block.
     ///
     /// Outputs the hidden states and the attention probabilities.
-    pub fn forward_t(&self, hidden_states: &Tensor, train: bool) -> (Tensor, Tensor) {
-        let (self_outputs, attention_probs) = self.self_attention.forward_t(hidden_states, train);
+    pub fn forward_t(
+        &self,
+        hidden_states: &Tensor,
+        attention_mask: Option<&LogitsMask>,
+        train: bool,
+    ) -> (Tensor, Tensor) {
+        let (self_outputs, attention_probs) =
+            self.self_attention
+                .forward_t(hidden_states, attention_mask, train);
         let attention_output = self
             .self_output
             .forward_t(&self_outputs, &hidden_states, train);
@@ -194,13 +202,23 @@ pub struct BertEncoder {
 impl BertEncoder {
     /// Apply the encoder.
     ///
-    /// Returns the output and attention per layer.
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Vec<BertLayerOutput> {
+    /// Returns the output and attention per layer. The (optional)
+    /// attention mask of shape `[batch_size, time_steps]` indicates
+    /// which tokens should be included (`true`) and excluded (`false`) from
+    /// attention. This can be used to mask inactive timesteps.
+    pub fn forward_t(
+        &self,
+        input: &Tensor,
+        attention_mask: Option<&Tensor>,
+        train: bool,
+    ) -> Vec<BertLayerOutput> {
         let mut all_layer_outputs = Vec::with_capacity(self.layers.len());
+
+        let attention_mask = attention_mask.map(|mask| LogitsMask::from_bool_mask(mask));
 
         let mut hidden_states = CowTensor::Borrowed(input);
         for layer in &self.layers {
-            let layer_output = layer.forward_t(&hidden_states, train);
+            let layer_output = layer.forward_t(&hidden_states, attention_mask.as_ref(), train);
 
             hidden_states = CowTensor::Owned(layer_output.output.shallow_clone());
             all_layer_outputs.push(layer_output);
@@ -287,8 +305,13 @@ pub struct BertLayer {
 }
 
 impl BertLayer {
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> BertLayerOutput {
-        let (attention_output, attention) = self.attention.forward_t(input, train);
+    pub fn forward_t(
+        &self,
+        input: &Tensor,
+        attention_mask: Option<&LogitsMask>,
+        train: bool,
+    ) -> BertLayerOutput {
+        let (attention_output, attention) = self.attention.forward_t(input, attention_mask, train);
         let intermediate_output = self.intermediate.forward(&attention_output);
         let output = self
             .output
@@ -411,7 +434,12 @@ impl BertSelfAttention {
     ///
     /// Return the contextualized representations and attention
     /// probabilities.
-    pub fn forward_t(&self, hidden_states: &Tensor, train: bool) -> (Tensor, Tensor) {
+    pub fn forward_t(
+        &self,
+        hidden_states: &Tensor,
+        attention_mask: Option<&LogitsMask>,
+        train: bool,
+    ) -> (Tensor, Tensor) {
         let mixed_key_layer = self.key.forward(hidden_states);
         let mixed_query_layer = self.query.forward(hidden_states);
         let mixed_value_layer = self.value.forward(hidden_states);
@@ -423,6 +451,11 @@ impl BertSelfAttention {
         // Get the raw attention scores.
         let attention_scores = query_layer.matmul(&key_layer.transpose(-1, -2));
         let attention_scores = attention_scores / (self.attention_head_size as f64).sqrt();
+
+        let attention_scores = match attention_mask {
+            Some(mask) => attention_scores + &**mask,
+            None => attention_scores,
+        };
 
         // Convert the raw attention scores into a probability distribution.
         let attention_probs = attention_scores.softmax(-1, Kind::Float);
@@ -612,7 +645,7 @@ mod tests {
     use maplit::btreeset;
     use ndarray::{array, ArrayD};
     use tch::nn::VarStore;
-    use tch::{Device, Tensor};
+    use tch::{Device, Kind, Tensor};
 
     use crate::bert_model::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
     use crate::hdf5_model::LoadFromHDF5;
@@ -654,6 +687,17 @@ mod tests {
         ]
     }
 
+    fn seqlen_to_mask(seq_lens: Tensor, max_len: i64) -> Tensor {
+        let batch_size = seq_lens.size()[0];
+        Tensor::arange(max_len, (Kind::Int, Device::Cpu))
+            // Construct a matrix [batch_size, max_len] where each row
+            // is 0..(max_len - 1).
+            .repeat(&[batch_size])
+            .view_(&[batch_size, max_len])
+            // Time steps less than the length in seq_lens are active.
+            .lt1(&seq_lens.unsqueeze(1))
+    }
+
     fn varstore_variables(vs: &VarStore) -> BTreeSet<String> {
         vs.variables()
             .into_iter()
@@ -681,7 +725,7 @@ mod tests {
         let summed_embeddings =
             embeddings
                 .forward_t(&pieces, None, None, false)
-                .sum1(&[-1], false, tch::Kind::Float);
+                .sum1(&[-1], false, Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_embeddings).try_into().unwrap();
 
@@ -752,14 +796,68 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, None, None, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, false);
+        let all_hidden_states = encoder.forward_t(&embeddings, None, false);
 
         let summed_last_hidden =
             all_hidden_states
                 .last()
                 .unwrap()
                 .output
-                .sum1(&[-1], false, tch::Kind::Float);
+                .sum1(&[-1], false, Kind::Float);
+
+        let sums: ArrayD<f32> = (&summed_last_hidden).try_into().unwrap();
+
+        assert_abs_diff_eq!(
+            sums,
+            (array![[
+                -1.6283, 0.2473, -0.2388, -0.4124, -0.4058, 1.4587, -0.3182, -0.9507, -0.1781,
+                0.3792
+            ]])
+            .into_dyn(),
+            epsilon = 1e-4
+        );
+    }
+
+    #[test]
+    fn bert_encoder_attention_mask() {
+        let config = german_bert_config();
+        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+
+        let vs = VarStore::new(Device::Cpu);
+
+        let embeddings = BertEmbeddings::load_from_hdf5(
+            vs.root(),
+            &config,
+            german_bert_file.group("/bert/embeddings").unwrap(),
+        )
+        .unwrap();
+
+        let encoder = BertEncoder::load_from_hdf5(
+            vs.root(),
+            &config,
+            german_bert_file.group("bert/encoder").unwrap(),
+        )
+        .unwrap();
+
+        // Word pieces of: Veruntreute die AWO spendengeld ?
+        // Add some padding to simulate inactive time steps.
+        let pieces = Tensor::of_slice(&[
+            133i64, 1937, 14010, 30, 32, 26939, 26962, 12558, 2739, 2, 0, 0, 0, 0, 0,
+        ])
+        .reshape(&[1, 15]);
+
+        let attention_mask = seqlen_to_mask(Tensor::of_slice(&[10]), pieces.size()[1]);
+
+        let embeddings = embeddings.forward_t(&pieces, None, None, false);
+
+        let all_hidden_states = encoder.forward_t(&embeddings, Some(&attention_mask), false);
+
+        let summed_last_hidden = all_hidden_states
+            .last()
+            .unwrap()
+            .output
+            .slice(-2, 0, 10, 1)
+            .sum1(&[-1], false, Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_last_hidden).try_into().unwrap();
 
@@ -828,9 +926,9 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, None, None, false);
 
-        let layer_output0 = layer0.forward_t(&embeddings, false);
+        let layer_output0 = layer0.forward_t(&embeddings, None, false);
 
-        let summed_layer0 = layer_output0.output.sum1(&[-1], false, tch::Kind::Float);
+        let summed_layer0 = layer_output0.output.sum1(&[-1], false, Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_layer0).try_into().unwrap();
 
