@@ -28,6 +28,7 @@ use crate::cow::CowTensor;
 use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
 use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
 use crate::traits::{LayerAttention, LayerOutput};
+use crate::util::LogitsMask;
 
 /// Bert attention block.
 #[derive(Debug)]
@@ -52,7 +53,7 @@ impl BertAttention {
     pub fn forward_t(
         &self,
         hidden_states: &Tensor,
-        attention_mask: Option<&Tensor>,
+        attention_mask: Option<&LogitsMask>,
         train: bool,
     ) -> (Tensor, Tensor) {
         let (self_outputs, attention_probs) =
@@ -289,7 +290,7 @@ impl BertEncoder {
     ///
     /// Returns the output and attention per layer. The (optional)
     /// attention mask of shape `[batch_size, time_steps]` indicates
-    /// which tokens should be included (`1`) and excluded (`0`) from
+    /// which tokens should be included (`true`) and excluded (`false`) from
     /// attention. This can be used to mask inactive timesteps.
     pub fn forward_t(
         &self,
@@ -299,9 +300,11 @@ impl BertEncoder {
     ) -> Vec<BertLayerOutput> {
         let mut all_layer_outputs = Vec::with_capacity(self.layers.len());
 
+        let attention_mask = attention_mask.map(|mask| LogitsMask::from_bool_mask(mask));
+
         let mut hidden_states = CowTensor::Borrowed(input);
         for layer in &self.layers {
-            let layer_output = layer.forward_t(&hidden_states, attention_mask, train);
+            let layer_output = layer.forward_t(&hidden_states, attention_mask.as_ref(), train);
 
             hidden_states = CowTensor::Owned(layer_output.output.shallow_clone());
             all_layer_outputs.push(layer_output);
@@ -424,7 +427,7 @@ impl BertLayer {
     pub fn forward_t(
         &self,
         input: &Tensor,
-        attention_mask: Option<&Tensor>,
+        attention_mask: Option<&LogitsMask>,
         train: bool,
     ) -> BertLayerOutput {
         let (attention_output, attention) = self.attention.forward_t(input, attention_mask, train);
@@ -523,9 +526,9 @@ impl BertOutput {
 
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
-        let hidden_states = self.dropout.forward_t(&hidden_states, train);
-        let hidden_states_residual = hidden_states + input;
-        self.layer_norm.forward(&hidden_states_residual)
+        let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
+        hidden_states += input;
+        self.layer_norm.forward(&hidden_states)
     }
 }
 
@@ -634,7 +637,7 @@ impl BertSelfAttention {
     pub fn forward_t(
         &self,
         hidden_states: &Tensor,
-        attention_mask: Option<&Tensor>,
+        attention_mask: Option<&LogitsMask>,
         train: bool,
     ) -> (Tensor, Tensor) {
         let mixed_key_layer = self.key.forward(hidden_states);
@@ -646,23 +649,12 @@ impl BertSelfAttention {
         let value_layer = self.transpose_for_scores(&mixed_value_layer);
 
         // Get the raw attention scores.
-        let attention_scores = query_layer.matmul(&key_layer.transpose(-1, -2));
-        let attention_scores = attention_scores / (self.attention_head_size as f64).sqrt();
+        let mut attention_scores = query_layer.matmul(&key_layer.transpose(-1, -2));
+        attention_scores /= (self.attention_head_size as f64).sqrt();
 
-        let attention_scores = match attention_mask {
-            Some(mask) => {
-                // The attention mask has shape [batch_size, seq_len], extend
-                // to [batch_size, 1, 1, seq_len].
-                let extended_mask = mask.unsqueeze(1).unsqueeze(1);
-
-                // Use (very) negative values for time steps that should be masked.
-                let extended_mask = (1.0 - extended_mask.to_kind(Kind::Float)) * -10_000.;
-
-                attention_scores + extended_mask
-            }
-
-            None => attention_scores,
-        };
+        if let Some(mask) = attention_mask {
+            attention_scores += &**mask;
+        }
 
         // Convert the raw attention scores into a probability distribution.
         let attention_probs = attention_scores.softmax(-1, Kind::Float);
@@ -789,9 +781,9 @@ impl BertSelfOutput {
 
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
-        let hidden_states = self.dropout.forward_t(&hidden_states, train);
-        let hidden_states_residual = hidden_states + input;
-        self.layer_norm.forward(&hidden_states_residual)
+        let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
+        hidden_states += input;
+        self.layer_norm.forward(&hidden_states)
     }
 }
 
@@ -952,7 +944,7 @@ mod tests {
             .repeat(&[batch_size])
             .view_(&[batch_size, max_len])
             // Time steps less than the length in seq_lens are active.
-            .lt_1(&seq_lens.unsqueeze(1))
+            .lt1(&seq_lens.unsqueeze(1))
     }
 
     fn varstore_variables(vs: &VarStore) -> BTreeSet<String> {

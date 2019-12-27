@@ -10,4 +10,6 @@ pub mod hdf5_model;
 
 pub mod scalar_weighting;
 
+pub mod util;
+
 pub mod traits;
