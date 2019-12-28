@@ -58,11 +58,7 @@ impl<'a> AdamW<'a> {
     pub fn backward_step(&mut self, loss: &Tensor) {
         self.zero_grad();
         loss.backward();
-<<<<<<< HEAD
         tch::no_grad(|| self.step());
-=======
-        self.step();
->>>>>>> 353fff72e72b77ed55b873ee8191a021f83dd053
     }
 
     pub fn set_lr(&mut self, lr: f64) {
