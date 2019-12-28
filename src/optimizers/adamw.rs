@@ -25,48 +25,46 @@ struct AdamWState {
     exp_avg_sq: Tensor,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct AdamWConfig {
+    pub betas: (f64, f64),
+    pub correct_bias: bool,
+    pub eps: f64,
+    pub lr: f64,
+    pub weight_decay: f64,
+}
+
+impl Default for AdamWConfig {
+    fn default() -> Self {
+        AdamWConfig {
+            betas: (0.9, 0.999),
+            correct_bias: false,
+            eps: 1e-6,
+            lr: 1e-3,
+            weight_decay: 0.,
+        }
+    }
+}
+
 pub struct AdamW<'a> {
-    correct_bias: bool,
-    lr: f64,
-    betas: (f64, f64),
-    eps: f64,
-    weight_decay: f64,
-    vs: &'a VarStore,
     state: HashMap<String, AdamWState>,
+    vs: &'a VarStore,
 }
 
 impl<'a> AdamW<'a> {
     pub fn new(
         vs: &'a VarStore,
-        correct_bias: bool,
-        lr: f64,
-        betas: (f64, f64),
-        eps: f64,
-        weight_decay: f64,
     ) -> Self {
         AdamW {
-            vs,
-            correct_bias,
-            lr,
-            betas,
-            eps,
-            weight_decay,
             state: HashMap::new(),
+            vs,
         }
     }
 
-    pub fn backward_step(&mut self, loss: &Tensor) {
+    pub fn backward_step<F>(&mut self, loss: &Tensor, config_fun: F) where F: Fn(&str) -> AdamWConfig {
         self.zero_grad();
         loss.backward();
-<<<<<<< HEAD
-        tch::no_grad(|| self.step());
-=======
-        self.step();
->>>>>>> 353fff72e72b77ed55b873ee8191a021f83dd053
-    }
-
-    pub fn set_lr(&mut self, lr: f64) {
-        self.lr = lr
+        tch::no_grad(|| self.step(config_fun));
     }
 
     pub fn zero_grad(&self) {
@@ -77,11 +75,13 @@ impl<'a> AdamW<'a> {
         }
     }
 
-    fn step(&mut self) {
+    fn step<F>(&mut self, config_fun: F) where F: Fn(&str) -> AdamWConfig {
         for (name, mut tensor) in self.vs.variables() {
             if !tensor.grad().defined() {
                 continue;
             }
+
+            let config = config_fun(&name);
 
             let grad = tensor.grad();
 
@@ -95,24 +95,24 @@ impl<'a> AdamW<'a> {
 
             // Decay the first and second moment running average coefficient
             // In-place operations to update the averages at the same time
-            state.exp_avg *= self.betas.0;
-            state.exp_avg += (1. - self.betas.0) * &grad;
-            state.exp_avg_sq *= self.betas.1;
-            state.exp_avg_sq += (1. - self.betas.1) * &grad * &grad;
+            state.exp_avg *= config.betas.0;
+            state.exp_avg += (1. - config.betas.0) * &grad;
+            state.exp_avg_sq *= config.betas.1;
+            state.exp_avg_sq += (1. - config.betas.1) * &grad * &grad;
             let mut denom = state.exp_avg_sq.sqrt();
-            denom += self.eps;
+            denom += config.eps;
 
-            let mut step_size = self.lr;
-            if self.correct_bias {
-                let bias_correction1 = 1.0 - self.betas.0.powf(state.step as f64);
-                let bias_correction2 = 1.0 - self.betas.1.powf(state.step as f64);
+            let mut step_size = config.lr;
+            if config.correct_bias {
+                let bias_correction1 = 1.0 - config.betas.0.powf(state.step as f64);
+                let bias_correction2 = 1.0 - config.betas.1.powf(state.step as f64);
                 step_size *= bias_correction2.sqrt() / bias_correction1;
             }
 
             tensor += -step_size * (&state.exp_avg / denom);
 
-            if self.weight_decay > 0. {
-                tensor += -self.lr * self.weight_decay * &tensor;
+            if config.weight_decay > 0. {
+                tensor += -config.lr * config.weight_decay * &tensor;
             }
         }
     }

@@ -3,8 +3,8 @@ use std::borrow::Borrow;
 use tch::nn::{Init, Linear, Module, Path};
 use tch::{Kind, Reduction, Tensor};
 
-use crate::traits::LayerOutput;
 use crate::cow::CowTensor;
+use crate::traits::LayerOutput;
 
 /// Layer that performs a scalar weighting of layers.
 ///
@@ -65,7 +65,9 @@ impl ScalarWeight {
         let layers = Tensor::stack(&layers, 2);
 
         let layer_weights = if train {
-            let dropout_mask = Tensor::empty_like(&self.layer_weights).fill_(1.0 - self.layer_dropout_prob).bernoulli();
+            let dropout_mask = Tensor::empty_like(&self.layer_weights)
+                .fill_(1.0 - self.layer_dropout_prob)
+                .bernoulli();
             let softmask_mask = (1.0 - dropout_mask.to_kind(Kind::Float)) * -10_000.;
             CowTensor::Owned(&self.layer_weights + softmask_mask)
         } else {
@@ -74,8 +76,7 @@ impl ScalarWeight {
 
         // Convert the layer weights into a probability distribution and
         // expand dimensions to get shape [1, 1, n_layers, 1].
-        let layer_weights =
-            layer_weights
+        let layer_weights = layer_weights
             .softmax(-1, Kind::Float)
             .unsqueeze(0)
             .unsqueeze(0)
@@ -132,14 +133,21 @@ impl ScalarWeightClassifier {
     /// Compute the losses and correctly predicted labels of the given targets.
     ///
     /// `targets` should be of the shape `[batch_size, seq_len]`.
-    pub fn losses(&self, layers: &[impl LayerOutput], targets: &Tensor, train: bool) -> (Tensor, Tensor) {
+    pub fn losses(
+        &self,
+        layers: &[impl LayerOutput],
+        targets: &Tensor,
+        train: bool,
+    ) -> (Tensor, Tensor) {
         let targets_shape = targets.size();
         let batch_size = targets_shape[0];
         let seq_len = targets_shape[1];
 
         let n_labels = self.linear.ws.size()[0];
 
-        let logits = self.logits(layers, train).view([batch_size * seq_len, n_labels]);
+        let logits = self
+            .logits(layers, train)
+            .view([batch_size * seq_len, n_labels]);
         let targets = targets.view([batch_size * seq_len]);
 
         let predicted = logits.argmax(-1, false);
