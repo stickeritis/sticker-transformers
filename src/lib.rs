@@ -6,8 +6,6 @@ pub(crate) mod cow;
 
 pub mod layers;
 
-pub mod optimizers;
-
 pub mod hdf5_model;
 
 pub mod scalar_weighting;
