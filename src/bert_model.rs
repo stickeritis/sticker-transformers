@@ -526,9 +526,9 @@ impl BertOutput {
 
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
-        let hidden_states = self.dropout.forward_t(&hidden_states, train);
-        let hidden_states_residual = hidden_states + input;
-        self.layer_norm.forward(&hidden_states_residual)
+        let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
+        hidden_states += input;
+        self.layer_norm.forward(&hidden_states)
     }
 }
 
@@ -649,13 +649,12 @@ impl BertSelfAttention {
         let value_layer = self.transpose_for_scores(&mixed_value_layer);
 
         // Get the raw attention scores.
-        let attention_scores = query_layer.matmul(&key_layer.transpose(-1, -2));
-        let attention_scores = attention_scores / (self.attention_head_size as f64).sqrt();
+        let mut attention_scores = query_layer.matmul(&key_layer.transpose(-1, -2));
+        attention_scores /= (self.attention_head_size as f64).sqrt();
 
-        let attention_scores = match attention_mask {
-            Some(mask) => attention_scores + &**mask,
-            None => attention_scores,
-        };
+        if let Some(mask) = attention_mask {
+            attention_scores += &**mask;
+        }
 
         // Convert the raw attention scores into a probability distribution.
         let attention_probs = attention_scores.softmax(-1, Kind::Float);
@@ -782,9 +781,9 @@ impl BertSelfOutput {
 
     pub fn forward_t(&self, hidden_states: &Tensor, input: &Tensor, train: bool) -> Tensor {
         let hidden_states = self.dense.forward(hidden_states);
-        let hidden_states = self.dropout.forward_t(&hidden_states, train);
-        let hidden_states_residual = hidden_states + input;
-        self.layer_norm.forward(&hidden_states_residual)
+        let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
+        hidden_states += input;
+        self.layer_norm.forward(&hidden_states)
     }
 }
 
