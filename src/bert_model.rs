@@ -26,6 +26,7 @@ use crate::activations;
 use crate::cow::CowTensor;
 use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
 use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+use crate::traits::{LayerAttention, LayerOutput};
 use crate::util::LogitsMask;
 
 /// Bert attention block.
@@ -329,6 +330,18 @@ pub struct BertLayerOutput {
 
     /// The layer attentions.
     pub attention: Tensor,
+}
+
+impl LayerAttention for BertLayerOutput {
+    fn layer_attention(&self) -> &Tensor {
+        &self.attention
+    }
+}
+
+impl LayerOutput for BertLayerOutput {
+    fn layer_output(&self) -> &Tensor {
+        &self.output
+    }
 }
 
 impl LoadFromHDF5 for BertLayer {
