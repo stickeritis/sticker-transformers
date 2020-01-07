@@ -9,3 +9,5 @@ pub mod layers;
 pub mod hdf5_model;
 
 pub mod util;
+
+pub mod traits;
