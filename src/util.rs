@@ -11,14 +11,9 @@ pub struct LogitsMask {
 }
 
 impl LogitsMask {
-    /// Construct a logits mask from a boolean mask.
+    /// Construct a logits mask from a boolean mask (consisting of
+    /// bools, or a numeric type with 0/1).
     pub fn from_bool_mask(mask: &Tensor) -> Self {
-        assert_eq!(
-            mask.kind(),
-            Kind::Bool,
-            "Mask tensor does not have bool kind"
-        );
-
         assert_eq!(
             mask.size().len(),
             2,
