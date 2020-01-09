@@ -3,6 +3,18 @@ name = "sticker-transformers"
 version = "0.1.0"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 edition = "2018"
+description = "Transformer architectures, such as BERT"
+homepage = "https://github.com/stickeritis/sticker-transformers/"
+repository = "https://github.com/stickeritis/sticker-transformers.git"
+# Use after SPDX list is updated
+# license = "BlueOak-1.0.0"
+license-file = "LICENSE.md"
+
+exclude = [
+  ".gitignore",
+  ".github",
+  "testdata",
+]
 
 [dependencies]
 failure = "0.1"
