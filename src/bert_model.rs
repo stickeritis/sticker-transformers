@@ -146,11 +146,17 @@ impl BertEmbeddings {
     pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
         let vs = vs.borrow();
 
+        let normal_init = Init::Randn {
+            mean: 0.,
+            stdev: config.initializer_range,
+        };
+
         let word_embeddings = Embedding::new(
             vs.sub("word_embeddings"),
             "embeddings",
             config.vocab_size,
             config.hidden_size,
+            normal_init,
         );
 
         let position_embeddings = Embedding::new(
@@ -158,6 +164,7 @@ impl BertEmbeddings {
             "embeddings",
             config.max_position_embeddings,
             config.hidden_size,
+            normal_init,
         );
 
         let token_type_embeddings = Embedding::new(
@@ -165,6 +172,7 @@ impl BertEmbeddings {
             "embeddings",
             config.type_vocab_size,
             config.hidden_size,
+            normal_init,
         );
 
         let layer_norm = LayerNorm::new(

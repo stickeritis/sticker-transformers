@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use tch::nn::{self, Linear, Module, ModuleT, Path};
+use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{self, Tensor};
 
 /// Trait to place layer tensors in the var store.
@@ -56,15 +56,12 @@ impl Embedding {
         name: &str,
         num_embeddings: i64,
         embedding_dim: i64,
+        init: Init,
     ) -> Self {
-        Embedding(vs.borrow().var(
-            name,
-            &[num_embeddings, embedding_dim],
-            nn::Init::Randn {
-                mean: 0.,
-                stdev: 1.,
-            },
-        ))
+        Embedding(
+            vs.borrow()
+                .var(name, &[num_embeddings, embedding_dim], init),
+        )
     }
 }
 
