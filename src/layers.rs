@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 use tch::nn::{Init, Linear, Module, ModuleT, Path};
-use tch::{self, Tensor};
+use tch::{self, Kind, Tensor};
 
 /// Trait to place layer tensors in the var store.
 pub trait PlaceInVarStore
@@ -62,6 +62,44 @@ impl Embedding {
             vs.borrow()
                 .var(name, &[num_embeddings, embedding_dim], init),
         )
+    }
+
+    pub fn new_sinusoidal<'a>(
+        vs: impl Borrow<Path<'a>>,
+        name: &str,
+        num_embeddings: i64,
+        embedding_dim: i64,
+    ) -> Self {
+        let vs = vs.borrow();
+
+        // Vaswani et al, 2017:
+        //
+        // let x = 2i, then
+        // PE(pos, x) = sin(pos / 10000^(x/d))
+        // PE(pos, x + 1) = cos(pos / 10000^(x/d))
+        //
+        //   pos / 10000^(x/d)
+        // = pos * (1 / 10000^(x/d))
+        // = pos * exp(ln(1) - ln(10000^(x/d)))
+        // = pos * exp(-ln(10000) (x/d))
+        // = pos * exp(x * (-ln(10000) / d))
+        //
+        // Avoids the use of larger numbers with decreased precision.
+        let position = Tensor::arange(num_embeddings, (Kind::Float, vs.device())).unsqueeze(1);
+        let div_term = (Tensor::arange2(0, embedding_dim, 2, (Kind::Float, vs.device()))
+            * (-(10_000f64.ln()) / embedding_dim as f64))
+            .exp();
+        let position_encodings = position * div_term;
+
+        let position_embeddings = vs.zeros(name, &[num_embeddings, embedding_dim]);
+        position_embeddings
+            .slice(1, 0, embedding_dim, 2)
+            .copy_(&position_encodings.sin());
+        position_embeddings
+            .slice(1, 1, embedding_dim, 2)
+            .copy_(&position_encodings.cos());
+
+        Embedding(position_embeddings)
     }
 }
 
