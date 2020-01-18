@@ -1,10 +1,48 @@
 use std::borrow::Borrow;
 
-use tch::nn::{Init, Linear, Module, Path};
+use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{Kind, Reduction, Tensor};
 
 use crate::cow::CowTensor;
+use crate::layers::{Dropout, LayerNorm};
 use crate::traits::LayerOutput;
+
+/// Non-linear ReLU layer with layer normalization and dropout.
+#[derive(Debug)]
+struct NonLinearWithLayerNorm {
+    layer_norm: LayerNorm,
+    linear: Linear,
+    dropout: Dropout,
+}
+
+impl NonLinearWithLayerNorm {
+    fn new<'a>(
+        vs: impl Borrow<Path<'a>>,
+        in_size: i64,
+        out_size: i64,
+        dropout: f64,
+        layer_norm_eps: f64,
+    ) -> Self {
+        let vs = vs.borrow();
+
+        NonLinearWithLayerNorm {
+            dropout: Dropout::new(dropout),
+            layer_norm: LayerNorm::new(vs / "layer_norm", vec![out_size], layer_norm_eps, true),
+            linear: Linear {
+                ws: vs.var("weight", &[out_size, in_size], Init::KaimingUniform),
+                bs: vs.var("bias", &[out_size], Init::Const(0.)),
+            },
+        }
+    }
+}
+
+impl ModuleT for NonLinearWithLayerNorm {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+        let mut hidden = self.linear.forward(input).relu();
+        hidden = self.layer_norm.forward(&hidden);
+        self.dropout.forward_t(&hidden, train)
+    }
+}
 
 /// Layer that performs a scalar weighting of layers.
 ///
@@ -98,38 +136,55 @@ impl ScalarWeight {
 /// See Peters et al., 2018 and Kondratyuk & Straka, 2019.
 #[derive(Debug)]
 pub struct ScalarWeightClassifier {
+    dropout: Dropout,
     scalar_weight: ScalarWeight,
     linear: Linear,
+    non_linear: NonLinearWithLayerNorm,
 }
 
 impl ScalarWeightClassifier {
-    pub fn new<'a>(
-        vs: impl Borrow<Path<'a>>,
-        n_layers: i64,
-        n_features: i64,
-        n_labels: i64,
-        layer_dropout_prob: f64,
-    ) -> Self {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &ScalarWeightClassifierConfig) -> Self {
         assert!(
-            n_labels > 0,
-            "The number of labels ({}) should be larger than 0",
-            n_labels
+            config.n_labels > 0,
+            "The number of labels should be larger than 0",
         );
 
         assert!(
-            n_features > 0,
-            "The number of features ({}) should be larger than 0",
-            n_features
+            config.input_size > 0,
+            "The input size should be larger than 0",
+        );
+
+        assert!(
+            config.hidden_size > 0,
+            "The hidden size should be larger than 0",
         );
 
         let vs = vs.borrow();
 
-        let ws = vs.var("weight", &[n_labels, n_features], Init::KaimingUniform);
-        let bs = vs.var("bias", &[n_labels], Init::Const(0.));
+        let ws = vs.var(
+            "weight",
+            &[config.n_labels, config.hidden_size],
+            Init::KaimingUniform,
+        );
+        let bs = vs.var("bias", &[config.n_labels], Init::Const(0.));
+
+        let non_linear = NonLinearWithLayerNorm::new(
+            vs / "nonlinear",
+            config.input_size,
+            config.hidden_size,
+            config.dropout_prob,
+            config.layer_norm_eps,
+        );
 
         ScalarWeightClassifier {
-            scalar_weight: ScalarWeight::new(vs.sub("scalar_weight"), n_layers, layer_dropout_prob),
+            dropout: Dropout::new(config.dropout_prob),
             linear: Linear { ws, bs },
+            non_linear,
+            scalar_weight: ScalarWeight::new(
+                vs.sub("scalar_weight"),
+                config.n_layers,
+                config.layer_dropout_prob,
+            ),
         }
     }
 
@@ -139,7 +194,12 @@ impl ScalarWeightClassifier {
     }
 
     pub fn logits(&self, layers: &[impl LayerOutput], train: bool) -> Tensor {
-        let features = self.scalar_weight.forward(layers, train);
+        let mut features = self.scalar_weight.forward(layers, train);
+
+        features = self.dropout.forward_t(&features, train);
+
+        features = self.non_linear.forward_t(&features, train);
+
         self.linear.forward(&features)
     }
 
@@ -174,6 +234,30 @@ impl ScalarWeightClassifier {
     }
 }
 
+/// Configuration for the scalar weight classifier.
+pub struct ScalarWeightClassifierConfig {
+    /// Size of the hidden layer.
+    pub hidden_size: i64,
+
+    /// Size of the input to the classification layer.
+    pub input_size: i64,
+
+    /// Number of layers to weigh.
+    pub n_layers: i64,
+
+    /// Number of layers.
+    pub n_labels: i64,
+
+    /// The probability of excluding a layer from scalar weighting.
+    pub layer_dropout_prob: f64,
+
+    /// Hidden layer dropout probability.
+    pub dropout_prob: f64,
+
+    /// Layer norm epsilon.
+    pub layer_norm_eps: f64,
+}
+
 fn cross_entropy_loss(
     logits: &Tensor,
     targets: &Tensor,
@@ -201,13 +285,24 @@ fn cross_entropy_loss(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::convert::TryInto;
+    use std::iter::FromIterator;
 
     use approx::assert_abs_diff_eq;
     use ndarray::{array, ArrayD};
-    use tch::Tensor;
+    use tch::nn::VarStore;
+    use tch::{Device, Kind, Tensor};
 
-    use super::cross_entropy_loss;
+    use super::{cross_entropy_loss, ScalarWeightClassifier, ScalarWeightClassifierConfig};
+    use crate::models::bert::BertLayerOutput;
+
+    fn varstore_variables(vs: &VarStore) -> BTreeSet<String> {
+        vs.variables()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect::<BTreeSet<_>>()
+    }
 
     #[test]
     fn cross_entropy_loss_without_label_smoothing() {
@@ -228,5 +323,69 @@ mod tests {
             .try_into()
             .unwrap();
         assert_abs_diff_eq!(loss, array![0.632653].into_dyn(), epsilon = 1e-6);
+    }
+
+    #[test]
+    fn scalar_weight_classifier_shapes_forward_works() {
+        let vs = VarStore::new(Device::Cpu);
+
+        let classifier = ScalarWeightClassifier::new(
+            vs.root(),
+            &ScalarWeightClassifierConfig {
+                hidden_size: 10,
+                input_size: 8,
+                n_labels: 5,
+                n_layers: 2,
+                dropout_prob: 0.1,
+                layer_dropout_prob: 0.1,
+                layer_norm_eps: 0.01,
+            },
+        );
+
+        let layer1 = BertLayerOutput {
+            attention: Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu)),
+            output: Tensor::zeros(&[1, 3, 8], (Kind::Float, Device::Cpu)),
+        };
+        let layer2 = BertLayerOutput {
+            attention: Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu)),
+            output: Tensor::zeros(&[1, 3, 8], (Kind::Float, Device::Cpu)),
+        };
+
+        // Perform a forward pass to check that all shapes align.
+        let results = classifier.forward(&[layer1, layer2], false);
+
+        assert_eq!(results.size(), &[1, 3, 5]);
+    }
+
+    #[test]
+    fn scalar_weight_classifier_names() {
+        let vs = VarStore::new(Device::Cpu);
+
+        let _classifier = ScalarWeightClassifier::new(
+            vs.root(),
+            &ScalarWeightClassifierConfig {
+                hidden_size: 10,
+                input_size: 8,
+                n_labels: 5,
+                n_layers: 2,
+                dropout_prob: 0.1,
+                layer_dropout_prob: 0.1,
+                layer_norm_eps: 0.01,
+            },
+        );
+
+        assert_eq!(
+            varstore_variables(&vs),
+            BTreeSet::from_iter(vec![
+                "bias".to_string(),
+                "weight".to_string(),
+                "nonlinear.bias".to_string(),
+                "nonlinear.weight".to_string(),
+                "nonlinear.layer_norm.bias".to_string(),
+                "nonlinear.layer_norm.weight".to_string(),
+                "scalar_weight.layer_weights".to_string(),
+                "scalar_weight.scale".to_string()
+            ])
+        )
     }
 }
