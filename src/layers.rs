@@ -92,12 +92,15 @@ impl Embedding {
         let position_encodings = position * div_term;
 
         let position_embeddings = vs.zeros(name, &[num_embeddings, embedding_dim]);
-        position_embeddings
-            .slice(1, 0, embedding_dim, 2)
-            .copy_(&position_encodings.sin());
-        position_embeddings
-            .slice(1, 1, embedding_dim, 2)
-            .copy_(&position_encodings.cos());
+
+        tch::no_grad(|| {
+            position_embeddings
+                .slice(1, 0, embedding_dim, 2)
+                .copy_(&position_encodings.sin());
+            position_embeddings
+                .slice(1, 1, embedding_dim, 2)
+                .copy_(&position_encodings.cos());
+        });
 
         Embedding(position_embeddings)
     }
