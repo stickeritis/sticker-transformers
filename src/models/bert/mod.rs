@@ -29,6 +29,7 @@ use crate::activations;
 use crate::cow::CowTensor;
 use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
 use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+use crate::models::traits::WordEmbeddingsConfig;
 use crate::traits::{LayerAttention, LayerOutput};
 use crate::util::LogitsMask;
 
@@ -128,6 +129,28 @@ impl Default for BertConfig {
             type_vocab_size: 2,
             vocab_size: 30000,
         }
+    }
+}
+
+impl WordEmbeddingsConfig for BertConfig {
+    fn dims(&self) -> i64 {
+        self.hidden_size
+    }
+
+    fn dropout(&self) -> f64 {
+        self.hidden_dropout_prob
+    }
+
+    fn initializer_range(&self) -> f64 {
+        self.initializer_range
+    }
+
+    fn layer_norm_eps(&self) -> f64 {
+        self.layer_norm_eps
+    }
+
+    fn vocab_size(&self) -> i64 {
+        self.vocab_size
     }
 }
 
