@@ -5,10 +5,10 @@
         "homepage": "",
         "owner": "danieldk",
         "repo": "nix-packages",
-        "rev": "95f2ca2c5e1e22be0ebf06a06dfcf2d5bf8bdf82",
-        "sha256": "0rj3gn6w9f2gc7bf6aym0i6rnnn3j8mcp344q5r0wzgjn6rj9f2w",
+        "rev": "6e7a5dd56def67c0c198b6e780ee0a718e6eca73",
+        "sha256": "0wk60vcbfnmd5wq7w8cs4q0kzkkav68q2d09v0bcwqs6qx5azkwi",
         "type": "tarball",
-        "url": "https://github.com/danieldk/nix-packages/archive/95f2ca2c5e1e22be0ebf06a06dfcf2d5bf8bdf82.tar.gz",
+        "url": "https://github.com/danieldk/nix-packages/archive/6e7a5dd56def67c0c198b6e780ee0a718e6eca73.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "mozilla": {
