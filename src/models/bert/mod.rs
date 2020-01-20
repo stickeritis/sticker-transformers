@@ -235,7 +235,7 @@ impl BertEmbeddings {
         }
     }
 
-    pub fn forward_t(
+    pub fn forward(
         &self,
         input_ids: &Tensor,
         token_type_ids: Option<&Tensor>,
@@ -269,6 +269,12 @@ impl BertEmbeddings {
         let embeddings = input_embeddings + position_embeddings + token_type_embeddings;
         let embeddings = self.layer_norm.forward(&embeddings);
         self.dropout.forward_t(&embeddings, train)
+    }
+}
+
+impl ModuleT for BertEmbeddings {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+        self.forward(input, None, None, train)
     }
 }
 
@@ -942,7 +948,7 @@ mod tests {
     use hdf5::File;
     use maplit::btreeset;
     use ndarray::{array, ArrayD};
-    use tch::nn::VarStore;
+    use tch::nn::{ModuleT, VarStore};
     use tch::{Device, Kind, Tensor};
 
     use crate::hdf5_model::LoadFromHDF5;
@@ -1023,7 +1029,7 @@ mod tests {
 
         let summed_embeddings =
             embeddings
-                .forward_t(&pieces, None, None, false)
+                .forward_t(&pieces, false)
                 .sum1(&[-1], false, Kind::Float);
 
         let sums: ArrayD<f32> = (&summed_embeddings).try_into().unwrap();
@@ -1098,7 +1104,7 @@ mod tests {
         let pieces = Tensor::of_slice(&[133i64, 1937, 14010, 30, 32, 26939, 26962, 12558, 2739, 2])
             .reshape(&[1, 10]);
 
-        let embeddings = embeddings.forward_t(&pieces, None, None, false);
+        let embeddings = embeddings.forward_t(&pieces, false);
 
         let all_hidden_states = encoder.forward_t(&embeddings, None, false);
 
@@ -1152,7 +1158,7 @@ mod tests {
 
         let attention_mask = seqlen_to_mask(Tensor::of_slice(&[10]), pieces.size()[1]);
 
-        let embeddings = embeddings.forward_t(&pieces, None, None, false);
+        let embeddings = embeddings.forward_t(&pieces, false);
 
         let all_hidden_states = encoder.forward_t(&embeddings, Some(&attention_mask), false);
 
@@ -1233,7 +1239,7 @@ mod tests {
         let pieces = Tensor::of_slice(&[133i64, 1937, 14010, 30, 32, 26939, 26962, 12558, 2739, 2])
             .reshape(&[1, 10]);
 
-        let embeddings = embeddings.forward_t(&pieces, None, None, false);
+        let embeddings = embeddings.forward_t(&pieces, false);
 
         let layer_output0 = layer0.forward_t(&embeddings, None, false);
 
