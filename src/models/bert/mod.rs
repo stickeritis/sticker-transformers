@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! BERT (Devlin et al., 2018)
+
 use std::borrow::Borrow;
 use std::iter;
 
@@ -920,8 +922,8 @@ mod tests {
     use tch::nn::VarStore;
     use tch::{Device, Kind, Tensor};
 
-    use crate::bert_model::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
     use crate::hdf5_model::LoadFromHDF5;
+    use crate::models::bert::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
 
     fn german_bert_config() -> BertConfig {
         BertConfig {
