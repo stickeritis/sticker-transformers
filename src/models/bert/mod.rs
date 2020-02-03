@@ -303,8 +303,8 @@ impl LoadFromHDF5 for BertEmbeddings {
 
         let layer_norm_group = group.group("LayerNorm")?;
 
-        let weight = load_tensor(layer_norm_group.dataset("gamma")?, &[config.hidden_size])?;
-        let bias = load_tensor(layer_norm_group.dataset("beta")?, &[config.hidden_size])?;
+        let weight = load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
+        let bias = load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
 
         Ok(BertEmbeddings {
             word_embeddings: Embedding(word_embeddings)
@@ -440,7 +440,7 @@ impl LoadFromHDF5 for BertIntermediate {
     ) -> Fallible<Self> {
         let (dense_weight, dense_bias) = load_affine(
             group.group("dense")?,
-            "kernel",
+            "weight",
             "bias",
             config.hidden_size,
             config.intermediate_size,
@@ -600,7 +600,7 @@ impl LoadFromHDF5 for BertOutput {
 
         let (dense_weight, dense_bias) = load_affine(
             group.group("dense")?,
-            "kernel",
+            "weight",
             "bias",
             config.intermediate_size,
             config.hidden_size,
@@ -608,9 +608,9 @@ impl LoadFromHDF5 for BertOutput {
 
         let layer_norm_group = group.group("LayerNorm")?;
         let layer_norm_weight =
-            load_tensor(layer_norm_group.dataset("gamma")?, &[config.hidden_size])?;
+            load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
         let layer_norm_bias =
-            load_tensor(layer_norm_group.dataset("beta")?, &[config.hidden_size])?;
+            load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
 
         Ok(BertOutput {
             dense: Linear {
@@ -756,21 +756,21 @@ impl LoadFromHDF5 for BertSelfAttention {
 
         let (key_weight, key_bias) = load_affine(
             group.group("key")?,
-            "kernel",
+            "weight",
             "bias",
             config.hidden_size,
             all_head_size,
         )?;
         let (query_weight, query_bias) = load_affine(
             group.group("query")?,
-            "kernel",
+            "weight",
             "bias",
             config.hidden_size,
             all_head_size,
         )?;
         let (value_weight, value_bias) = load_affine(
             group.group("value")?,
-            "kernel",
+            "weight",
             "bias",
             config.hidden_size,
             all_head_size,
@@ -855,7 +855,7 @@ impl LoadFromHDF5 for BertSelfOutput {
 
         let (dense_weight, dense_bias) = load_affine(
             group.group("dense")?,
-            "kernel",
+            "weight",
             "bias",
             config.hidden_size,
             config.hidden_size,
@@ -863,9 +863,9 @@ impl LoadFromHDF5 for BertSelfOutput {
 
         let layer_norm_group = group.group("LayerNorm")?;
         let layer_norm_weight =
-            load_tensor(layer_norm_group.dataset("gamma")?, &[config.hidden_size])?;
+            load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
         let layer_norm_bias =
-            load_tensor(layer_norm_group.dataset("beta")?, &[config.hidden_size])?;
+            load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
 
         Ok(BertSelfOutput {
             dense: Linear {

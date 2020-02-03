@@ -23,7 +23,7 @@ if __name__ == "__main__":
     model_vars = tf.train.list_variables(checkpoint_path)
 
     with h5py.File(args.hdf5, "w") as hdf5:
-        ignore = re.compile("adam_v|adam_m|global_step")
+        ignore = re.compile("adam_v|adam_m|global_step|cls|pooler")
         for var in model_vars:
             (var, shape) = var
 
@@ -31,9 +31,14 @@ if __name__ == "__main__":
             if ignore.search(var):
                 continue
 
-            print("Adding %s..." % var, file=sys.stderr)
+            # Rewrite some variable names
+            renamedVar = var.replace("kernel", "weight")
+            renamedVar = renamedVar.replace("gamma", "weight")
+            renamedVar = renamedVar.replace("beta", "bias")
+
+            print("Adding %s..." % renamedVar, file=sys.stderr)
 
             # Retrieve the tensor associated with the variable
             # and store it in the HDF5 file.
             tensor = tf.train.load_variable(checkpoint_path, var)
-            hdf5.create_dataset(var, data=tensor)
+            hdf5.create_dataset(renamedVar, data=tensor)
