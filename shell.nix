@@ -20,6 +20,7 @@ in with nixpkgs; mkShell {
 
   propagatedBuildInputs = [
     (python3.withPackages (ps: with ps; [
+      danieldk.python3Packages.pytorch.v1_3_1
       h5py
       tensorflow-bin
     ]))
