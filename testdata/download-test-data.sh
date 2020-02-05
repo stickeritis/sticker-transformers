@@ -1,14 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
-SCRIPTDIR="$(dirname "${BASH_SOURCE[0]}")"
-PARAMS="${SCRIPTDIR}/bert-base-german-cased.hdf5"
-
-if [ -e "${PARAMS}" ]; then
-  echo "The model was already downloaded."
-  exit 0
-fi
-
-curl -o "${PARAMS}" \
+models=(
   http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/bert-base-german-cased.hdf5
+  http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/xlm-roberta-base.hdf5
+)
+
+SCRIPTDIR="$(dirname "${BASH_SOURCE[0]}")"
+
+for model in ${models[@]}; do
+  model_file="${SCRIPTDIR}/$(basename $model)"
+
+  if [ -e "${model_file}" ]; then
+    echo "${model_file} is already available"
+    continue
+  fi
+
+  curl -o "${model_file}" "${model}"
+done
+
