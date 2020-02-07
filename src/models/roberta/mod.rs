@@ -101,6 +101,8 @@ mod tests {
     use crate::models::bert::{BertConfig, BertEncoder};
     use crate::models::roberta::RobertaEmbeddings;
 
+    const XLM_ROBERTA_BASE: &str = env!("XLM_ROBERTA_BASE");
+
     fn xlm_roberta_config() -> BertConfig {
         BertConfig {
             attention_probs_dropout_prob: 0.1,
@@ -121,7 +123,7 @@ mod tests {
     #[test]
     fn xlm_roberta_embeddings() {
         let config = xlm_roberta_config();
-        let roberta_file = File::open("testdata/xlm-roberta-base.hdf5", "r").unwrap();
+        let roberta_file = File::open(XLM_ROBERTA_BASE, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         let embeddings = RobertaEmbeddings::load_from_hdf5(
@@ -160,7 +162,7 @@ mod tests {
     #[test]
     fn xlm_roberta_encoder() {
         let config = xlm_roberta_config();
-        let roberta_file = File::open("testdata/xlm-roberta-base.hdf5", "r").unwrap();
+        let roberta_file = File::open(XLM_ROBERTA_BASE, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         let embeddings = RobertaEmbeddings::load_from_hdf5(
