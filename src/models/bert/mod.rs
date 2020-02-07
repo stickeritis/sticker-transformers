@@ -954,6 +954,8 @@ mod tests {
     use crate::hdf5_model::LoadFromHDF5;
     use crate::models::bert::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
 
+    const BERT_BASE_GERMAN_CASED: &str = env!("BERT_BASE_GERMAN_CASED");
+
     fn german_bert_config() -> BertConfig {
         BertConfig {
             attention_probs_dropout_prob: 0.1,
@@ -1013,7 +1015,7 @@ mod tests {
     #[test]
     fn bert_embeddings() {
         let german_bert_config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         let embeddings = BertEmbeddings::load_from_hdf5(
@@ -1050,7 +1052,7 @@ mod tests {
     #[test]
     fn bert_embeddings_names() {
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         BertEmbeddings::load_from_hdf5(
@@ -1082,7 +1084,7 @@ mod tests {
     #[test]
     fn bert_encoder() {
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
 
@@ -1131,7 +1133,7 @@ mod tests {
     #[test]
     fn bert_encoder_attention_mask() {
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
 
@@ -1187,7 +1189,7 @@ mod tests {
         // Verify that the encoders's names correspond between loaded
         // and newly-constructed models.
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs_loaded = VarStore::new(Device::Cpu);
         BertEncoder::load_from_hdf5(
@@ -1217,7 +1219,7 @@ mod tests {
     #[test]
     fn bert_layer() {
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs = VarStore::new(Device::Cpu);
 
@@ -1263,7 +1265,7 @@ mod tests {
         // Verify that the layer's names correspond between loaded
         // and newly-constructed models.
         let config = german_bert_config();
-        let german_bert_file = File::open("testdata/bert-base-german-cased.hdf5", "r").unwrap();
+        let german_bert_file = File::open(BERT_BASE_GERMAN_CASED, "r").unwrap();
 
         let vs_loaded = VarStore::new(Device::Cpu);
         BertLayer::load_from_hdf5(

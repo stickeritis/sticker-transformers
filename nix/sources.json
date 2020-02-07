@@ -1,4 +1,11 @@
 {
+    "bert-base-german-cased": {
+        "sha256": "17lps2a0j0im5maz2rrblcj9kn3xr329jd9h1a04czz4g0xncdzv",
+        "type": "file",
+        "url": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/bert-base-german-cased.hdf5",
+        "url_template": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/bert-base-german-cased.hdf5",
+        "version": "1"
+    },
     "danieldk": {
         "branch": "master",
         "description": "My Nix package set",
@@ -36,15 +43,22 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "nixos-19.09",
-        "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
-        "homepage": "https://github.com/NixOS/nixpkgs",
+        "branch": "master",
+        "description": "Nix Packages collection",
+        "homepage": null,
         "owner": "NixOS",
-        "repo": "nixpkgs-channels",
-        "rev": "a7aa5dbb194edff49f045882225b7568737611dd",
-        "sha256": "0mg9pshg91k9hy2903y1y7s4bfpvsla9l0hlimpkbk2mxmp76ffd",
+        "repo": "nixpkgs",
+        "rev": "781ba5f33959dd364ba1ae928156768354e8e200",
+        "sha256": "1j6n6i5lh5lm6y6r9gp81ah1fcxymd3x4ria0sba8js846vblkfn",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs-channels/archive/a7aa5dbb194edff49f045882225b7568737611dd.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/781ba5f33959dd364ba1ae928156768354e8e200.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "xlm-roberta-base": {
+        "sha256": "1nij54y735aj1lmxqcpi4ibymswhkybn8hv0aldk6sprja83ww23",
+        "type": "file",
+        "url": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/xlm-roberta-base.hdf5",
+        "url_template": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/xlm-roberta-base.hdf5",
+        "version": "1"
     }
 }
