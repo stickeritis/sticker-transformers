@@ -19,16 +19,14 @@
 use std::borrow::Borrow;
 use std::iter;
 
-use failure::{Fail, Fallible};
-use hdf5::Group;
+use failure::Fail;
 use serde::{Deserialize, Serialize};
 use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{Kind, Tensor};
 
 use crate::activations;
 use crate::cow::CowTensor;
-use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
-use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+use crate::layers::{Dropout, Embedding, LayerNorm};
 use crate::models::traits::WordEmbeddingsConfig;
 use crate::traits::{LayerAttention, LayerOutput};
 use crate::util::LogitsMask;
@@ -67,31 +65,6 @@ impl BertAttention {
             .forward_t(&self_outputs, &hidden_states, train);
 
         (attention_output, attention_probs)
-    }
-}
-
-impl LoadFromHDF5 for BertAttention {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        Ok(BertAttention {
-            self_attention: BertSelfAttention::load_from_hdf5(
-                vs.sub("self"),
-                config,
-                group.group("self")?,
-            )?,
-            self_output: BertSelfOutput::load_from_hdf5(
-                vs.sub("output"),
-                config,
-                group.group("output")?,
-            )?,
-        })
     }
 }
 
@@ -278,54 +251,6 @@ impl ModuleT for BertEmbeddings {
     }
 }
 
-impl LoadFromHDF5 for BertEmbeddings {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let word_embeddings = load_tensor(
-            group.dataset("word_embeddings")?,
-            &[config.vocab_size, config.hidden_size],
-        )?;
-        let position_embeddings = load_tensor(
-            group.dataset("position_embeddings")?,
-            &[config.max_position_embeddings, config.hidden_size],
-        )?;
-        let token_type_embeddings = load_tensor(
-            group.dataset("token_type_embeddings")?,
-            &[config.type_vocab_size, config.hidden_size],
-        )?;
-
-        let layer_norm_group = group.group("LayerNorm")?;
-
-        let weight = load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
-        let bias = load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
-
-        Ok(BertEmbeddings {
-            word_embeddings: Embedding(word_embeddings)
-                .place_in_var_store(vs.sub("word_embeddings")),
-            position_embeddings: Embedding(position_embeddings)
-                .place_in_var_store(vs.sub("position_embeddings")),
-            token_type_embeddings: Embedding(token_type_embeddings)
-                .place_in_var_store(vs.sub("token_type_embeddings")),
-
-            layer_norm: LayerNorm::new_with_affine(
-                vec![config.hidden_size],
-                config.layer_norm_eps,
-                weight,
-                bias,
-            )
-            .place_in_var_store(vs.sub("layer_norm")),
-            dropout: Dropout::new(config.hidden_dropout_prob),
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct BertEncoder {
     layers: Vec<BertLayer>,
@@ -370,30 +295,6 @@ impl BertEncoder {
     }
 }
 
-impl LoadFromHDF5 for BertEncoder {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let layers = (0..config.num_hidden_layers)
-            .map(|idx| {
-                BertLayer::load_from_hdf5(
-                    vs.sub(format!("layer_{}", idx)),
-                    config,
-                    group.group(&format!("layer_{}", idx))?,
-                )
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(BertEncoder { layers })
-    }
-}
-
 #[derive(Debug)]
 pub struct BertIntermediate {
     dense: Linear,
@@ -427,38 +328,6 @@ impl Module for BertIntermediate {
     fn forward(&self, input: &Tensor) -> Tensor {
         let hidden_states = self.dense.forward(input);
         self.activation.forward(&hidden_states)
-    }
-}
-
-impl LoadFromHDF5 for BertIntermediate {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let (dense_weight, dense_bias) = load_affine(
-            group.group("dense")?,
-            "weight",
-            "bias",
-            config.hidden_size,
-            config.intermediate_size,
-        )?;
-
-        let activation = match bert_activations(&config.hidden_act) {
-            Some(activation) => activation,
-            None => return Err(BertError::unknown_activation_function(&config.hidden_act).into()),
-        };
-
-        Ok(BertIntermediate {
-            activation,
-            dense: Linear {
-                ws: dense_weight.tr(),
-                bs: dense_bias,
-            }
-            .place_in_var_store(vs.borrow().sub("dense")),
-        })
     }
 }
 
@@ -518,34 +387,6 @@ impl LayerOutput for BertLayerOutput {
     }
 }
 
-impl LoadFromHDF5 for BertLayer {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let attention =
-            BertAttention::load_from_hdf5(vs.sub("attention"), config, group.group("attention")?)?;
-        let intermediate = BertIntermediate::load_from_hdf5(
-            vs.sub("intermediate"),
-            config,
-            group.group("intermediate")?,
-        )?;
-
-        let output = BertOutput::load_from_hdf5(vs.sub("output"), config, group.group("output")?)?;
-
-        Ok(BertLayer {
-            attention,
-            intermediate,
-            output,
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct BertOutput {
     dense: Linear,
@@ -585,48 +426,6 @@ impl BertOutput {
         let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
         hidden_states += input;
         self.layer_norm.forward(&hidden_states)
-    }
-}
-
-impl LoadFromHDF5 for BertOutput {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let (dense_weight, dense_bias) = load_affine(
-            group.group("dense")?,
-            "weight",
-            "bias",
-            config.intermediate_size,
-            config.hidden_size,
-        )?;
-
-        let layer_norm_group = group.group("LayerNorm")?;
-        let layer_norm_weight =
-            load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
-        let layer_norm_bias =
-            load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
-
-        Ok(BertOutput {
-            dense: Linear {
-                ws: dense_weight.tr(),
-                bs: dense_bias,
-            }
-            .place_in_var_store(vs.sub("dense")),
-            dropout: Dropout::new(config.hidden_dropout_prob),
-            layer_norm: LayerNorm::new_with_affine(
-                vec![config.hidden_size],
-                config.layer_norm_eps,
-                layer_norm_weight,
-                layer_norm_bias,
-            )
-            .place_in_var_store(vs.sub("layer_norm")),
-        })
     }
 }
 
@@ -741,66 +540,6 @@ impl BertSelfAttention {
     }
 }
 
-impl LoadFromHDF5 for BertSelfAttention {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let attention_head_size = config.hidden_size / config.num_attention_heads;
-        let all_head_size = config.num_attention_heads * attention_head_size;
-
-        let (key_weight, key_bias) = load_affine(
-            group.group("key")?,
-            "weight",
-            "bias",
-            config.hidden_size,
-            all_head_size,
-        )?;
-        let (query_weight, query_bias) = load_affine(
-            group.group("query")?,
-            "weight",
-            "bias",
-            config.hidden_size,
-            all_head_size,
-        )?;
-        let (value_weight, value_bias) = load_affine(
-            group.group("value")?,
-            "weight",
-            "bias",
-            config.hidden_size,
-            all_head_size,
-        )?;
-
-        Ok(BertSelfAttention {
-            all_head_size,
-            attention_head_size,
-            num_attention_heads: config.num_attention_heads,
-
-            dropout: Dropout::new(config.attention_probs_dropout_prob),
-            key: Linear {
-                ws: key_weight.tr(),
-                bs: key_bias,
-            }
-            .place_in_var_store(vs.sub("key")),
-            query: Linear {
-                ws: query_weight.tr(),
-                bs: query_bias,
-            }
-            .place_in_var_store(vs.sub("query")),
-            value: Linear {
-                ws: value_weight.tr(),
-                bs: value_bias,
-            }
-            .place_in_var_store(vs.sub("value")),
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct BertSelfOutput {
     dense: Linear,
@@ -840,48 +579,6 @@ impl BertSelfOutput {
         let mut hidden_states = self.dropout.forward_t(&hidden_states, train);
         hidden_states += input;
         self.layer_norm.forward(&hidden_states)
-    }
-}
-
-impl LoadFromHDF5 for BertSelfOutput {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Fallible<Self> {
-        let vs = vs.borrow();
-
-        let (dense_weight, dense_bias) = load_affine(
-            group.group("dense")?,
-            "weight",
-            "bias",
-            config.hidden_size,
-            config.hidden_size,
-        )?;
-
-        let layer_norm_group = group.group("LayerNorm")?;
-        let layer_norm_weight =
-            load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
-        let layer_norm_bias =
-            load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
-
-        Ok(BertSelfOutput {
-            dense: Linear {
-                ws: dense_weight.tr(),
-                bs: dense_bias,
-            }
-            .place_in_var_store(vs.sub("dense")),
-            dropout: Dropout::new(config.hidden_dropout_prob),
-            layer_norm: LayerNorm::new_with_affine(
-                vec![config.hidden_size],
-                config.layer_norm_eps,
-                layer_norm_weight,
-                layer_norm_bias,
-            )
-            .place_in_var_store(vs.sub("layer_norm")),
-        })
     }
 }
 
@@ -938,6 +635,331 @@ impl BertError {
     }
 }
 
+#[cfg(feature = "load-hdf5")]
+mod hdf5_impl {
+    use std::borrow::Borrow;
+
+    use failure::Fallible;
+    use hdf5::Group;
+    use tch::nn::{Linear, Path};
+
+    use crate::hdf5_model::{load_affine, load_tensor, LoadFromHDF5};
+    use crate::layers::{Dropout, Embedding, LayerNorm, PlaceInVarStore};
+    use crate::models::bert::{
+        bert_activations, BertAttention, BertConfig, BertEmbeddings, BertEncoder, BertError,
+        BertIntermediate, BertLayer, BertOutput, BertSelfAttention, BertSelfOutput,
+    };
+
+    impl LoadFromHDF5 for BertAttention {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            Ok(BertAttention {
+                self_attention: BertSelfAttention::load_from_hdf5(
+                    vs.sub("self"),
+                    config,
+                    group.group("self")?,
+                )?,
+                self_output: BertSelfOutput::load_from_hdf5(
+                    vs.sub("output"),
+                    config,
+                    group.group("output")?,
+                )?,
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for BertEmbeddings {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let word_embeddings = load_tensor(
+                group.dataset("word_embeddings")?,
+                &[config.vocab_size, config.hidden_size],
+            )?;
+            let position_embeddings = load_tensor(
+                group.dataset("position_embeddings")?,
+                &[config.max_position_embeddings, config.hidden_size],
+            )?;
+            let token_type_embeddings = load_tensor(
+                group.dataset("token_type_embeddings")?,
+                &[config.type_vocab_size, config.hidden_size],
+            )?;
+
+            let layer_norm_group = group.group("LayerNorm")?;
+
+            let weight = load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
+            let bias = load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
+
+            Ok(BertEmbeddings {
+                word_embeddings: Embedding(word_embeddings)
+                    .place_in_var_store(vs.sub("word_embeddings")),
+                position_embeddings: Embedding(position_embeddings)
+                    .place_in_var_store(vs.sub("position_embeddings")),
+                token_type_embeddings: Embedding(token_type_embeddings)
+                    .place_in_var_store(vs.sub("token_type_embeddings")),
+
+                layer_norm: LayerNorm::new_with_affine(
+                    vec![config.hidden_size],
+                    config.layer_norm_eps,
+                    weight,
+                    bias,
+                )
+                .place_in_var_store(vs.sub("layer_norm")),
+                dropout: Dropout::new(config.hidden_dropout_prob),
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for BertEncoder {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let layers = (0..config.num_hidden_layers)
+                .map(|idx| {
+                    BertLayer::load_from_hdf5(
+                        vs.sub(format!("layer_{}", idx)),
+                        config,
+                        group.group(&format!("layer_{}", idx))?,
+                    )
+                })
+                .collect::<Result<_, _>>()?;
+
+            Ok(BertEncoder { layers })
+        }
+    }
+
+    impl LoadFromHDF5 for BertIntermediate {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let (dense_weight, dense_bias) = load_affine(
+                group.group("dense")?,
+                "weight",
+                "bias",
+                config.hidden_size,
+                config.intermediate_size,
+            )?;
+
+            let activation = match bert_activations(&config.hidden_act) {
+                Some(activation) => activation,
+                None => {
+                    return Err(BertError::unknown_activation_function(&config.hidden_act).into())
+                }
+            };
+
+            Ok(BertIntermediate {
+                activation,
+                dense: Linear {
+                    ws: dense_weight.tr(),
+                    bs: dense_bias,
+                }
+                .place_in_var_store(vs.borrow().sub("dense")),
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for BertLayer {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let attention = BertAttention::load_from_hdf5(
+                vs.sub("attention"),
+                config,
+                group.group("attention")?,
+            )?;
+            let intermediate = BertIntermediate::load_from_hdf5(
+                vs.sub("intermediate"),
+                config,
+                group.group("intermediate")?,
+            )?;
+
+            let output =
+                BertOutput::load_from_hdf5(vs.sub("output"), config, group.group("output")?)?;
+
+            Ok(BertLayer {
+                attention,
+                intermediate,
+                output,
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for BertOutput {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let (dense_weight, dense_bias) = load_affine(
+                group.group("dense")?,
+                "weight",
+                "bias",
+                config.intermediate_size,
+                config.hidden_size,
+            )?;
+
+            let layer_norm_group = group.group("LayerNorm")?;
+            let layer_norm_weight =
+                load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
+            let layer_norm_bias =
+                load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
+
+            Ok(BertOutput {
+                dense: Linear {
+                    ws: dense_weight.tr(),
+                    bs: dense_bias,
+                }
+                .place_in_var_store(vs.sub("dense")),
+                dropout: Dropout::new(config.hidden_dropout_prob),
+                layer_norm: LayerNorm::new_with_affine(
+                    vec![config.hidden_size],
+                    config.layer_norm_eps,
+                    layer_norm_weight,
+                    layer_norm_bias,
+                )
+                .place_in_var_store(vs.sub("layer_norm")),
+            })
+        }
+    }
+
+    #[cfg(feature = "load-hdf5")]
+    impl LoadFromHDF5 for BertSelfAttention {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let attention_head_size = config.hidden_size / config.num_attention_heads;
+            let all_head_size = config.num_attention_heads * attention_head_size;
+
+            let (key_weight, key_bias) = load_affine(
+                group.group("key")?,
+                "weight",
+                "bias",
+                config.hidden_size,
+                all_head_size,
+            )?;
+            let (query_weight, query_bias) = load_affine(
+                group.group("query")?,
+                "weight",
+                "bias",
+                config.hidden_size,
+                all_head_size,
+            )?;
+            let (value_weight, value_bias) = load_affine(
+                group.group("value")?,
+                "weight",
+                "bias",
+                config.hidden_size,
+                all_head_size,
+            )?;
+
+            Ok(BertSelfAttention {
+                all_head_size,
+                attention_head_size,
+                num_attention_heads: config.num_attention_heads,
+
+                dropout: Dropout::new(config.attention_probs_dropout_prob),
+                key: Linear {
+                    ws: key_weight.tr(),
+                    bs: key_bias,
+                }
+                .place_in_var_store(vs.sub("key")),
+                query: Linear {
+                    ws: query_weight.tr(),
+                    bs: query_bias,
+                }
+                .place_in_var_store(vs.sub("query")),
+                value: Linear {
+                    ws: value_weight.tr(),
+                    bs: value_bias,
+                }
+                .place_in_var_store(vs.sub("value")),
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for BertSelfOutput {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Fallible<Self> {
+            let vs = vs.borrow();
+
+            let (dense_weight, dense_bias) = load_affine(
+                group.group("dense")?,
+                "weight",
+                "bias",
+                config.hidden_size,
+                config.hidden_size,
+            )?;
+
+            let layer_norm_group = group.group("LayerNorm")?;
+            let layer_norm_weight =
+                load_tensor(layer_norm_group.dataset("weight")?, &[config.hidden_size])?;
+            let layer_norm_bias =
+                load_tensor(layer_norm_group.dataset("bias")?, &[config.hidden_size])?;
+
+            Ok(BertSelfOutput {
+                dense: Linear {
+                    ws: dense_weight.tr(),
+                    bs: dense_bias,
+                }
+                .place_in_var_store(vs.sub("dense")),
+                dropout: Dropout::new(config.hidden_dropout_prob),
+                layer_norm: LayerNorm::new_with_affine(
+                    vec![config.hidden_size],
+                    config.layer_norm_eps,
+                    layer_norm_weight,
+                    layer_norm_bias,
+                )
+                .place_in_var_store(vs.sub("layer_norm")),
+            })
+        }
+    }
+}
+
+#[cfg(feature = "load-hdf5")]
 #[cfg(feature = "model-tests")]
 #[cfg(test)]
 mod tests {

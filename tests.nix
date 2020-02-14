@@ -24,7 +24,16 @@ let
     defaultCrateOverrides = crateOverrides;
   };
   cargo_nix = pkgs.callPackage ./nix/Cargo.nix { inherit buildRustCrate; };
-in cargo_nix.rootCrate.build.override {
-  features = [ "model-tests" ];
-  runTests = true;
-}
+in [
+  # Test with HDF5 support disabled.
+  (cargo_nix.rootCrate.build.override {
+    features = [ "model-tests" ];
+    runTests = true;
+  })
+
+  # Test with HDF5 support.
+  (cargo_nix.rootCrate.build.override {
+    features = [ "load-hdf5" "model-tests" ];
+    runTests = true;
+  })
+]

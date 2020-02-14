@@ -2143,6 +2143,7 @@ rec {
           {
             name = "hdf5";
             packageId = "hdf5 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)";
+            optional = true;
           }
           {
             name = "serde";
@@ -2170,7 +2171,10 @@ rec {
           }
         ];
         features = {
+          "default" = [ "load-hdf5" ];
+          "load-hdf5" = [ "hdf5" ];
         };
+        resolvedDefaultFeatures = [ "default" "hdf5" "load-hdf5" ];
       };
     "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)"
       = rec {
