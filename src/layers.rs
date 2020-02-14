@@ -111,6 +111,7 @@ pub struct LayerNorm {
 }
 
 impl LayerNorm {
+    #[cfg(feature = "load-hdf5")]
     pub(crate) fn new_with_affine(
         normalized_shape: impl Into<Vec<i64>>,
         eps: f64,

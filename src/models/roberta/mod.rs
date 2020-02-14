@@ -16,13 +16,10 @@
 
 use std::borrow::Borrow;
 
-use failure::Fallible;
-use hdf5::Group;
 use tch::nn::{ModuleT, Path};
 use tch::{Kind, Tensor};
 
 use crate::cow::CowTensor;
-use crate::hdf5_model::LoadFromHDF5;
 use crate::models::bert::{BertConfig, BertEmbeddings};
 
 const PADDING_IDX: i64 = 1;
@@ -67,26 +64,40 @@ impl RobertaEmbeddings {
     }
 }
 
-impl LoadFromHDF5 for RobertaEmbeddings {
-    type Config = BertConfig;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        file: Group,
-    ) -> Fallible<Self> {
-        BertEmbeddings::load_from_hdf5(vs, config, file)
-            .map(|embeds| RobertaEmbeddings { inner: embeds })
-    }
-}
-
 impl ModuleT for RobertaEmbeddings {
     fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         self.forward(input, None, None, train)
     }
 }
 
+#[cfg(feature = "load-hdf5")]
+mod hdf5_impl {
+    use std::borrow::Borrow;
+
+    use failure::Fallible;
+    use hdf5::Group;
+    use tch::nn::Path;
+
+    use crate::hdf5_model::LoadFromHDF5;
+    use crate::models::bert::{BertConfig, BertEmbeddings};
+    use crate::models::roberta::RobertaEmbeddings;
+
+    impl LoadFromHDF5 for RobertaEmbeddings {
+        type Config = BertConfig;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            file: Group,
+        ) -> Fallible<Self> {
+            BertEmbeddings::load_from_hdf5(vs, config, file)
+                .map(|embeds| RobertaEmbeddings { inner: embeds })
+        }
+    }
+}
+
 #[cfg(feature = "model-tests")]
+#[cfg(feature = "load-hdf5")]
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;

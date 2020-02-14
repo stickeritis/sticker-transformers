@@ -6,6 +6,7 @@ pub mod layers;
 
 pub mod models;
 
+#[cfg(feature = "load-hdf5")]
 pub mod hdf5_model;
 
 pub mod scalar_weighting;
