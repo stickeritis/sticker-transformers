@@ -18,7 +18,6 @@ in mkShell (with nixpkgs; {
 
   buildInputs = [
     curl
-    hdf5
     openssl
   ] ++ lib.optional stdenv.isDarwin darwin.apple_sdk.frameworks.Security;
 
