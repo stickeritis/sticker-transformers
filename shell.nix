@@ -6,7 +6,11 @@ let
   nixpkgs = import sources.nixpkgs {};
   danieldk = nixpkgs.callPackage sources.danieldk {};
   mozilla = nixpkgs.callPackage "${sources.mozilla}/package-set.nix" {};
-in with nixpkgs; mkShell {
+  # PyTorch 1.4.0 headers are not compatible with gcc 9. Remove with
+  # the next PyTorch release.
+  stdenv = if nixpkgs.stdenv.cc.isGNU then nixpkgs.gcc8Stdenv else nixpkgs.stdenv;
+  mkShell = nixpkgs.mkShell.override (attr: { inherit stdenv; });
+in mkShell (with nixpkgs; {
   nativeBuildInputs = [
     mozilla.latest.rustChannels.stable.rust
     pkgconfig
@@ -20,7 +24,7 @@ in with nixpkgs; mkShell {
 
   propagatedBuildInputs = [
     (python3.withPackages (ps: with ps; [
-      danieldk.python3Packages.pytorch.v1_3_1
+      danieldk.python3Packages.pytorch.v1_4_0
       h5py
       tensorflow-bin
     ]))
@@ -31,4 +35,4 @@ in with nixpkgs; mkShell {
   HDF5_DIR = symlinkJoin { name = "hdf5-join"; paths = [ hdf5.dev hdf5.out ]; };
 
   LIBTORCH = "${danieldk.libtorch.v1_4_0}";
-}
+})
