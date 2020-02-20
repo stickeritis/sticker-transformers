@@ -20,7 +20,7 @@ rec {
   #
 
   rootCrate = rec {
-    packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
+    packageId = "sticker-transformers 0.4.2 (path+file:///home/daniel/git/sticker-transformers)";
 
     # Use this attribute to refer to the derivation building your root crate package.
     # You can override the features with rootCrate.build.override { features = [ "default" "feature1" ... ]; }.
@@ -40,9 +40,9 @@ rec {
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
     "sticker-transformers" = rec {
-      packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
+      packageId = "sticker-transformers 0.4.2 (path+file:///home/daniel/git/sticker-transformers)";
       build = buildRustCrateWithFeatures {
-        packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
+        packageId = "sticker-transformers 0.4.2 (path+file:///home/daniel/git/sticker-transformers)";
         features = rootFeatures;
       };
 
@@ -2126,10 +2126,10 @@ rec {
         features = {
         };
       };
-    "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)"
+    "sticker-transformers 0.4.2 (path+file:///home/daniel/git/sticker-transformers)"
       = rec {
         crateName = "sticker-transformers";
-        version = "0.4.1";
+        version = "0.4.2";
         edition = "2018";
         src = (builtins.filterSource sourceFilter ../.);
         authors = [
