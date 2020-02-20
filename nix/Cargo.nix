@@ -20,7 +20,7 @@ rec {
   #
 
   rootCrate = rec {
-    packageId = "sticker-transformers 0.4.0 (path+file:///home/daniel/git/sticker-transformers)";
+    packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
 
     # Use this attribute to refer to the derivation building your root crate package.
     # You can override the features with rootCrate.build.override { features = [ "default" "feature1" ... ]; }.
@@ -40,9 +40,9 @@ rec {
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
     "sticker-transformers" = rec {
-      packageId = "sticker-transformers 0.4.0 (path+file:///home/daniel/git/sticker-transformers)";
+      packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
       build = buildRustCrateWithFeatures {
-        packageId = "sticker-transformers 0.4.0 (path+file:///home/daniel/git/sticker-transformers)";
+        packageId = "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)";
         features = rootFeatures;
       };
 
@@ -2126,10 +2126,10 @@ rec {
         features = {
         };
       };
-    "sticker-transformers 0.4.0 (path+file:///home/daniel/git/sticker-transformers)"
+    "sticker-transformers 0.4.1 (path+file:///home/daniel/git/sticker-transformers)"
       = rec {
         crateName = "sticker-transformers";
-        version = "0.4.0";
+        version = "0.4.1";
         edition = "2018";
         src = (builtins.filterSource sourceFilter ../.);
         authors = [
@@ -2152,7 +2152,7 @@ rec {
           }
           {
             name = "tch";
-            packageId = "tch 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)";
+            packageId = "tch 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)";
           }
         ];
         devDependencies = [
@@ -2279,12 +2279,12 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "proc-macro" ];
       };
-    "tch 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)"
+    "tch 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)"
       = rec {
         crateName = "tch";
-        version = "0.1.5";
+        version = "0.1.6";
         edition = "2018";
-        sha256 = "1qlli0a2mwyizkb4sva6v7nl9kq4sjy1fjg1i7g0m96fg2s5viwa";
+        sha256 = "0wx267k39mvwzwhfyc0yca6la7gsz7ql7h088ynns36a9asgbay0";
         authors = [
           "Laurent Mazare <lmazare@gmail.com>"
         ];
@@ -2311,7 +2311,7 @@ rec {
           }
           {
             name = "torch-sys";
-            packageId = "torch-sys 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)";
+            packageId = "torch-sys 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)";
           }
           {
             name = "zip";
@@ -2319,6 +2319,7 @@ rec {
           }
         ];
         features = {
+          "doc-only" = [ "torch-sys/doc-only" ];
           "python" = [ "cpython" ];
         };
       };
@@ -2376,12 +2377,12 @@ rec {
         features = {
         };
       };
-    "torch-sys 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)"
+    "torch-sys 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)"
       = rec {
         crateName = "torch-sys";
-        version = "0.1.5";
+        version = "0.1.6";
         edition = "2018";
-        sha256 = "156dvnb4q9mkfh1bgmsakr5gavzj4kzasra1cik2nycl4cjz713b";
+        sha256 = "056dg7rid4bjj4qrd0hn0wpxw0lhrp6rsxljysivdz9xyqjc1lwk";
         authors = [
           "Laurent Mazare <lmazare@gmail.com>"
         ];

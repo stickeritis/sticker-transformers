@@ -20,7 +20,7 @@ exclude = [
 failure = "0.1"
 hdf5 = { version = "0.5", optional = true }
 serde = { version = "1", features = ["derive"] }
-tch = "= 0.1.5"
+tch = "= 0.1.6"
 
 [dev-dependencies]
 approx = "0.3"
