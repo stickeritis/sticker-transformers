@@ -3,8 +3,6 @@ use std::borrow::Borrow;
 use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{self, Tensor};
 
-use crate::util::SinusoidalPositions;
-
 /// Trait to place layer tensors in the var store.
 pub trait PlaceInVarStore
 where
@@ -64,20 +62,6 @@ impl Embedding {
             vs.borrow()
                 .var(name, &[num_embeddings, embedding_dim], init),
         )
-    }
-
-    pub fn new_sinusoidal<'a>(
-        vs: impl Borrow<Path<'a>>,
-        name: &str,
-        num_embeddings: i64,
-        embedding_dim: i64,
-    ) -> Self {
-        let vs = vs.borrow();
-
-        let position_embeddings = vs.zeros(name, &[num_embeddings, embedding_dim]);
-        position_embeddings.sinusoidal_positions_();
-
-        Embedding(position_embeddings)
     }
 }
 

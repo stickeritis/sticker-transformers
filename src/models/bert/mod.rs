@@ -141,15 +141,7 @@ pub struct BertEmbeddings {
 impl BertEmbeddings {
     /// Construct new Bert embeddings with the given variable store
     /// and Bert configuration.
-    ///
-    /// If `sinusoidal_position_embeddings` is true, the position embeddings
-    /// will be initialized as in Vaswani, 2017. Otherwise, the position
-    /// embeddings are initialized randomly following a normal distribution.
-    pub fn new<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &BertConfig,
-        sinusoidal_position_embeddings: bool,
-    ) -> Self {
+    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
         let vs = vs.borrow();
 
         let normal_init = Init::Randn {
@@ -165,22 +157,13 @@ impl BertEmbeddings {
             normal_init,
         );
 
-        let position_embeddings = if sinusoidal_position_embeddings {
-            Embedding::new_sinusoidal(
-                vs.sub("position_embeddings"),
-                "embeddings",
-                config.max_position_embeddings,
-                config.hidden_size,
-            )
-        } else {
-            Embedding::new(
-                vs.sub("position_embeddings"),
-                "embeddings",
-                config.max_position_embeddings,
-                config.hidden_size,
-                normal_init,
-            )
-        };
+        let position_embeddings = Embedding::new(
+            vs.sub("position_embeddings"),
+            "embeddings",
+            config.max_position_embeddings,
+            config.hidden_size,
+            normal_init,
+        );
 
         let token_type_embeddings = Embedding::new(
             vs.sub("token_type_embeddings"),

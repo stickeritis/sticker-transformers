@@ -35,7 +35,7 @@ impl RobertaEmbeddings {
     /// and Bert configuration.
     pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &BertConfig) -> Self {
         RobertaEmbeddings {
-            inner: BertEmbeddings::new(vs, config, false),
+            inner: BertEmbeddings::new(vs, config),
         }
     }
 
