@@ -43,18 +43,27 @@ impl Deref for LogitsMask {
 pub trait SinusoidalPositions {
     /// Create sinusoidal positions in-place.
     ///
+    /// If `p_norm` is specified, the sinusoidal embeddings are
+    /// normalized using their *p* norm. For instance using *p = 2*
+    /// will result in embeddings that are unit vectors.
+    ///
     /// This method panics if the the shape of tensor is not `[a, b]`,
     /// where `b % 2 == 0`.
-    fn sinusoidal_positions_(&self);
+    fn sinusoidal_positions_(&mut self, p_norm: Option<f64>);
 
     /// Create new tensor with sinusoidal positions.
     ///
     /// The number of dimensions should be even.
-    fn sinusoidal_positions(n_positions: i64, dims: i64, options: (Kind, Device)) -> Self;
+    fn sinusoidal_positions(
+        n_positions: i64,
+        dims: i64,
+        p_norm: Option<f64>,
+        options: (Kind, Device),
+    ) -> Self;
 }
 
 impl SinusoidalPositions for Tensor {
-    fn sinusoidal_positions_(&self) {
+    fn sinusoidal_positions_(&mut self, p_norm: Option<f64>) {
         let shape = self.size();
         let dims = shape[1];
 
@@ -101,18 +110,31 @@ impl SinusoidalPositions for Tensor {
                 .copy_(&position_encodings.sin());
             self.slice(1, 1, embedding_dim, 2)
                 .copy_(&position_encodings.cos());
+
+            if let Some(p) = p_norm {
+                // Compute the p-norm.
+                let norm = self.norm2(p, &[-1], true);
+
+                // Normalize embeddings.
+                *self /= &norm;
+            }
         });
     }
 
-    fn sinusoidal_positions(n_positions: i64, dims: i64, options: (Kind, Device)) -> Self {
+    fn sinusoidal_positions(
+        n_positions: i64,
+        dims: i64,
+        p_norm: Option<f64>,
+        options: (Kind, Device),
+    ) -> Self {
         assert!(
             dims % 2 == 0,
             "Dimensionality of sinusoidal positions should be even, was: {}",
             dims
         );
 
-        let positions = Tensor::empty(&[n_positions, dims], options);
-        positions.sinusoidal_positions_();
+        let mut positions = Tensor::empty(&[n_positions, dims], options);
+        positions.sinusoidal_positions_(p_norm);
 
         positions
     }
@@ -132,13 +154,31 @@ pub mod tests {
     #[should_panic]
     fn positions_dimensionality_must_be_even() {
         let _positions: Tensor =
-            SinusoidalPositions::sinusoidal_positions(5, 9, (Kind::Float, Device::Cpu));
+            SinusoidalPositions::sinusoidal_positions(5, 9, None, (Kind::Float, Device::Cpu));
+    }
+
+    #[test]
+    fn positions_are_l1_normalized() {
+        let positions: Tensor =
+            SinusoidalPositions::sinusoidal_positions(5, 8, Some(1.), (Kind::Float, Device::Cpu));
+        let norms: ArrayD<f32> = (&positions.abs().sum1(&[-1], false, Kind::Float))
+            .try_into()
+            .unwrap();
+        assert_abs_diff_eq!(norms, array![1., 1., 1., 1., 1.].into_dyn(), epsilon = 1e-4);
+    }
+
+    #[test]
+    fn positions_are_l2_normalized() {
+        let positions: Tensor =
+            SinusoidalPositions::sinusoidal_positions(5, 8, Some(2.), (Kind::Float, Device::Cpu));
+        let norms: ArrayD<f32> = (&positions.norm2(2., &[-1], false)).try_into().unwrap();
+        assert_abs_diff_eq!(norms, array![1., 1., 1., 1., 1.].into_dyn(), epsilon = 1e-4);
     }
 
     #[test]
     fn positions_are_sinusoidal() {
         let positions: Tensor =
-            SinusoidalPositions::sinusoidal_positions(5, 8, (Kind::Float, Device::Cpu));
+            SinusoidalPositions::sinusoidal_positions(5, 8, None, (Kind::Float, Device::Cpu));
 
         let positions: ArrayD<f32> = (&positions).try_into().unwrap();
 
@@ -192,7 +232,7 @@ pub mod tests {
     #[test]
     #[should_panic]
     fn positions_tensor_must_be_matrix() {
-        let positions = Tensor::empty(&[8, 8, 8], (Kind::Float, Device::Cpu));
-        positions.sinusoidal_positions_();
+        let mut positions = Tensor::empty(&[8, 8, 8], (Kind::Float, Device::Cpu));
+        positions.sinusoidal_positions_(None);
     }
 }
