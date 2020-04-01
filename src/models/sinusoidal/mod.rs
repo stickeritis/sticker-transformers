@@ -17,11 +17,20 @@ use crate::util::SinusoidalPositions;
 pub struct SinusoidalEmbeddings {
     dropout: Dropout,
     layer_norm: LayerNorm,
+    p_norm: Option<f64>,
     word_embeddings: Embedding,
 }
 
 impl SinusoidalEmbeddings {
-    pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &impl WordEmbeddingsConfig) -> Self {
+    /// Create piece embeddings with sinusoidal position embeddings.
+    ///
+    /// If a `p_norm` is specified position embeddings are normalized
+    /// using this norm.
+    pub fn new<'a>(
+        vs: impl Borrow<Path<'a>>,
+        config: &impl WordEmbeddingsConfig,
+        p_norm: Option<f64>,
+    ) -> Self {
         let vs = vs.borrow();
 
         let normal_init = Init::Randn {
@@ -47,9 +56,10 @@ impl SinusoidalEmbeddings {
         let dropout = Dropout::new(config.dropout());
 
         SinusoidalEmbeddings {
-            word_embeddings,
-            layer_norm,
             dropout,
+            layer_norm,
+            p_norm,
+            word_embeddings,
         }
     }
 }
@@ -65,6 +75,7 @@ impl ModuleT for SinusoidalEmbeddings {
         let position_embeddings: Tensor = SinusoidalPositions::sinusoidal_positions(
             seq_length,
             embedding_dim,
+            self.p_norm,
             (Kind::Float, word_embeddings.device()),
         );
 
