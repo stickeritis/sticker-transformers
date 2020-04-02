@@ -245,7 +245,7 @@ pub struct ScalarWeightClassifierConfig {
     /// Number of layers to weigh.
     pub n_layers: i64,
 
-    /// Number of layers.
+    /// Number of labels.
     pub n_labels: i64,
 
     /// The probability of excluding a layer from scalar weighting.
