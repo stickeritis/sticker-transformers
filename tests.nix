@@ -12,9 +12,13 @@ let
       HDF5_DIR = symlinkJoin { name = "hdf5-join"; paths = [ hdf5.dev hdf5.out ]; };
     };
 
-    sticker-transformers = attr: models;
+    sticker-transformers = attr: {
+      buildInputs = lib.optional stdenv.isDarwin darwin.Security;
+    } // models;
 
     torch-sys = attr: {
+      nativeBuildInputs = lib.optional stdenv.isDarwin curl;
+
       LIBTORCH = "${danieldk.libtorch.v1_4_0}";
     };
   };
