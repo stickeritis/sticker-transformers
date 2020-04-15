@@ -1082,7 +1082,7 @@ mod tests {
 
         // Compare against fresh embeddings layer.
         let vs_fresh = VarStore::new(Device::Cpu);
-        let _ = BertEmbeddings::new(vs_fresh.root(), &config, false);
+        let _ = BertEmbeddings::new(vs_fresh.root(), &config);
         assert_eq!(variables, varstore_variables(&vs_fresh));
     }
 
