@@ -19,10 +19,10 @@
 use std::borrow::Borrow;
 use std::iter;
 
-use failure::Fail;
 use serde::{Deserialize, Serialize};
 use tch::nn::{Init, Linear, Module, ModuleT, Path};
 use tch::{Kind, Tensor};
+use thiserror::Error;
 
 use crate::activations;
 use crate::cow::CowTensor;
@@ -595,18 +595,20 @@ fn bert_linear<'a>(
     }
 }
 
-#[derive(Clone, Debug, Fail)]
+#[derive(Clone, Debug, Error)]
+#[non_exhaustive]
 pub enum BertError {
-    #[fail(
-        display = "hidden size ({}) is not a multiple of attention heads ({})",
-        hidden_size, num_attention_heads
-    )]
+    #[cfg(feature = "load-hdf5")]
+    #[error(transparent)]
+    HDF5(#[from] hdf5::Error),
+
+    #[error("hidden size ({hidden_size:?}) is not a multiple of attention heads ({num_attention_heads:?})")]
     IncorrectHiddenSize {
         hidden_size: i64,
         num_attention_heads: i64,
     },
 
-    #[fail(display = "unknown activation function: {}", activation)]
+    #[error("unknown activation function: {activation:?}")]
     UnknownActivationFunction { activation: String },
 }
 
@@ -622,7 +624,6 @@ impl BertError {
 mod hdf5_impl {
     use std::borrow::Borrow;
 
-    use failure::Fallible;
     use hdf5::Group;
     use tch::nn::{Linear, Path};
 
@@ -636,11 +637,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertAttention {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let vs = vs.borrow();
 
             Ok(BertAttention {
@@ -661,11 +664,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertEmbeddings {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let vs = vs.borrow();
 
             let word_embeddings = load_tensor(
@@ -709,11 +714,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertEncoder {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, BertError> {
             let vs = vs.borrow();
 
             let layers = (0..config.num_hidden_layers)
@@ -733,11 +740,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertIntermediate {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let (dense_weight, dense_bias) = load_affine(
                 group.group("dense")?,
                 "weight",
@@ -748,9 +757,7 @@ mod hdf5_impl {
 
             let activation = match bert_activations(&config.hidden_act) {
                 Some(activation) => activation,
-                None => {
-                    return Err(BertError::unknown_activation_function(&config.hidden_act).into())
-                }
+                None => return Err(BertError::unknown_activation_function(&config.hidden_act)),
             };
 
             Ok(BertIntermediate {
@@ -767,11 +774,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertLayer {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, BertError> {
             let vs = vs.borrow();
 
             let attention = BertAttention::load_from_hdf5(
@@ -799,11 +808,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertOutput {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let vs = vs.borrow();
 
             let (dense_weight, dense_bias) = load_affine(
@@ -842,11 +853,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertSelfAttention {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let vs = vs.borrow();
 
             let attention_head_size = config.hidden_size / config.num_attention_heads;
@@ -902,11 +915,13 @@ mod hdf5_impl {
     impl LoadFromHDF5 for BertSelfOutput {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             group: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             let vs = vs.borrow();
 
             let (dense_weight, dense_bias) = load_affine(

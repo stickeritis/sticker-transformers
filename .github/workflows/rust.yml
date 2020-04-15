@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [stable, 1.37.0]
+        rust: [stable, 1.40.0]
     steps:
     - uses: actions/checkout@v1
     - name: Install libhdf5
