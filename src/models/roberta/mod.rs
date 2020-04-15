@@ -74,22 +74,23 @@ impl ModuleT for RobertaEmbeddings {
 mod hdf5_impl {
     use std::borrow::Borrow;
 
-    use failure::Fallible;
     use hdf5::Group;
     use tch::nn::Path;
 
     use crate::hdf5_model::LoadFromHDF5;
-    use crate::models::bert::{BertConfig, BertEmbeddings};
+    use crate::models::bert::{BertConfig, BertEmbeddings, BertError};
     use crate::models::roberta::RobertaEmbeddings;
 
     impl LoadFromHDF5 for RobertaEmbeddings {
         type Config = BertConfig;
 
+        type Error = BertError;
+
         fn load_from_hdf5<'a>(
             vs: impl Borrow<Path<'a>>,
             config: &Self::Config,
             file: Group,
-        ) -> Fallible<Self> {
+        ) -> Result<Self, Self::Error> {
             BertEmbeddings::load_from_hdf5(vs, config, file)
                 .map(|embeds| RobertaEmbeddings { inner: embeds })
         }
