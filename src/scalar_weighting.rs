@@ -271,10 +271,10 @@ fn cross_entropy_loss(
             // Set all labels to label_smoothing and the target to 1-label_smoothing.
             let n_classes = n_classes;
             let smoothed_targets = tch::no_grad(|| {
-                Tensor::full_like(&probs, label_smoothing / (n_classes - 1) as f64).scatter(
+                Tensor::full_like(&probs, label_smoothing / (n_classes - 1) as f64).scatter1(
                     1,
                     &targets.unsqueeze(1),
-                    &(1. - label_smoothing).into(),
+                    1. - label_smoothing,
                 )
             });
             (-smoothed_targets * probs).sum1(&[-1], false, Kind::Float)
