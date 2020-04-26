@@ -6,11 +6,8 @@ let
   nixpkgs = import sources.nixpkgs {};
   danieldk = nixpkgs.callPackage sources.danieldk {};
   mozilla = nixpkgs.callPackage "${sources.mozilla}/package-set.nix" {};
-  # PyTorch 1.4.0 headers are not compatible with gcc 9. Remove with
-  # the next PyTorch release.
-  stdenv = if nixpkgs.stdenv.cc.isGNU then nixpkgs.gcc8Stdenv else nixpkgs.stdenv;
-  mkShell = nixpkgs.mkShell.override (attr: { inherit stdenv; });
-in mkShell (with nixpkgs; {
+  libtorch = danieldk.libtorch.v1_5_0;
+in with nixpkgs; mkShell {
   nativeBuildInputs = [
     mozilla.latest.rustChannels.stable.rust
     pkgconfig
@@ -18,6 +15,7 @@ in mkShell (with nixpkgs; {
 
   buildInputs = [
     curl
+    libtorch
     openssl
   ] ++ lib.optional stdenv.isDarwin darwin.apple_sdk.frameworks.Security;
 
@@ -33,5 +31,5 @@ in mkShell (with nixpkgs; {
   # it if libraries and includes are in different directories.
   HDF5_DIR = symlinkJoin { name = "hdf5-join"; paths = [ hdf5.dev hdf5.out ]; };
 
-  LIBTORCH = "${danieldk.libtorch.v1_4_0}";
-})
+  LIBTORCH = libtorch.dev;
+}
