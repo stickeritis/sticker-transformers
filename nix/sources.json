@@ -7,15 +7,15 @@
         "version": "1"
     },
     "danieldk": {
-        "branch": "master",
+        "branch": "libtorch-1.5.0",
         "description": "My Nix package set",
         "homepage": "",
         "owner": "danieldk",
         "repo": "nix-packages",
-        "rev": "78df184c3dc23ceab9508058e27d8eebebeef5cd",
-        "sha256": "10rqpwbkskqkkmvyagqq6jkxr5ry306gk1qqr02wqqvvvqn5qxfy",
+        "rev": "4a555f09c678ba168238370a4176a2aefd54274c",
+        "sha256": "1zgafv4hsvzpjc2r601dzdbzmz9q8xcivzg2wgr6vi02bf375zqi",
         "type": "tarball",
-        "url": "https://github.com/danieldk/nix-packages/archive/78df184c3dc23ceab9508058e27d8eebebeef5cd.tar.gz",
+        "url": "https://github.com/danieldk/nix-packages/archive/4a555f09c678ba168238370a4176a2aefd54274c.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "mozilla": {
@@ -43,15 +43,15 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
-        "branch": "master",
+        "branch": "release-20.03",
         "description": "Nix Packages collection",
         "homepage": null,
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "781ba5f33959dd364ba1ae928156768354e8e200",
-        "sha256": "1j6n6i5lh5lm6y6r9gp81ah1fcxymd3x4ria0sba8js846vblkfn",
+        "rev": "74a80c5a9ab04f87d48b91281f8508ee4b631d43",
+        "sha256": "1a10scwa86dlqrxz76y5m971kkqkkvf9vnc58n514l5ny3h5cw7j",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/781ba5f33959dd364ba1ae928156768354e8e200.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/74a80c5a9ab04f87d48b91281f8508ee4b631d43.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "xlm-roberta-base": {
