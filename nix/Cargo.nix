@@ -290,10 +290,10 @@ rec {
       };
       "cc" = rec {
         crateName = "cc";
-        version = "1.0.50";
+        version = "1.0.52";
         edition = "2018";
         crateBin = [];
-        sha256 = "1kdqm8ka7xg9h56b694pcz29ka33fsz27mzrphqc78gx96h8zqlm";
+        sha256 = "07g3qpa0gab3b0niw5ljzak6lgq34zjsv98hylxd0b59sqippn63";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -565,7 +565,7 @@ rec {
           }
           {
             name = "syn";
-            packageId = "syn 1.0.17";
+            packageId = "syn 1.0.18";
           }
           {
             name = "synstructure";
@@ -1935,7 +1935,7 @@ rec {
           }
           {
             name = "syn";
-            packageId = "syn 1.0.17";
+            packageId = "syn 1.0.18";
             features = [ "visit" ];
           }
         ];
@@ -2078,11 +2078,11 @@ rec {
         };
         resolvedDefaultFeatures = [ "clone-impls" "default" "derive" "extra-traits" "parsing" "printing" "proc-macro" "quote" ];
       };
-      "syn 1.0.17" = rec {
+      "syn 1.0.18" = rec {
         crateName = "syn";
-        version = "1.0.17";
+        version = "1.0.18";
         edition = "2018";
-        sha256 = "00xvf772ys4fj9fr8kplmsqb9if215dsipi3nv54aw9q7xkfpw0d";
+        sha256 = "04wj6qc9bczf1q75qzycx013s1dlgrbbjnddnk7cfa57q24782j1";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
@@ -2131,7 +2131,7 @@ rec {
           }
           {
             name = "syn";
-            packageId = "syn 1.0.17";
+            packageId = "syn 1.0.18";
             usesDefaultFeatures = false;
             features = [ "derive" "parsing" "printing" "clone-impls" "visit" "extra-traits" ];
           }
@@ -2150,12 +2150,7 @@ rec {
         crateName = "tch";
         version = "0.1.7";
         edition = "2018";
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/LaurentMazare/tch-rs.git";
-          rev = "0fd0dd1436e2d20067aae29958279d8ea5804cf9";
-          sha256 = "1i1bch2gm2yk33hc9wisswsnkj060zna90i4jmbfr82fvsaxn3xq";
-        };
+        sha256 = "1rdjl1fz0mpbyyp38d612dkbw3inq70bylpcb9shiz5x7jfmknn3";
         authors = [
           "Laurent Mazare <lmazare@gmail.com>"
         ];
@@ -2230,7 +2225,7 @@ rec {
           }
           {
             name = "syn";
-            packageId = "syn 1.0.17";
+            packageId = "syn 1.0.18";
           }
         ];
         
@@ -2284,12 +2279,7 @@ rec {
         crateName = "torch-sys";
         version = "0.1.7";
         edition = "2018";
-        workspace_member = null;
-        src = pkgs.fetchgit {
-          url = "https://github.com/LaurentMazare/tch-rs.git";
-          rev = "0fd0dd1436e2d20067aae29958279d8ea5804cf9";
-          sha256 = "1i1bch2gm2yk33hc9wisswsnkj060zna90i4jmbfr82fvsaxn3xq";
-        };
+        sha256 = "0hysfgwrxrw0aldgp0gs9va4kgvbb23yl3jpzwnr7qqa03g0hygm";
         authors = [
           "Laurent Mazare <lmazare@gmail.com>"
         ];
