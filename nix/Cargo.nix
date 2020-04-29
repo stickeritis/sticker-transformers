@@ -1999,7 +1999,7 @@ rec {
       };
       "sticker-transformers" = rec {
         crateName = "sticker-transformers";
-        version = "0.6.1";
+        version = "0.6.2";
         edition = "2018";
         src = (builtins.filterSource sourceFilter ../.);
         authors = [
