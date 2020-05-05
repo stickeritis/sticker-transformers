@@ -39,7 +39,7 @@ impl SinusoidalEmbeddings {
         };
 
         let word_embeddings = Embedding::new(
-            vs.sub("word_embeddings"),
+            vs / "word_embeddings",
             "embeddings",
             config.vocab_size(),
             config.dims(),
@@ -47,7 +47,7 @@ impl SinusoidalEmbeddings {
         );
 
         let layer_norm = LayerNorm::new(
-            vs.sub("layer_norm"),
+            vs / "layer_norm",
             vec![config.dims()],
             config.layer_norm_eps(),
             true,

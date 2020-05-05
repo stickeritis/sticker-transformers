@@ -43,8 +43,8 @@ impl BertAttention {
         let vs = vs.borrow();
 
         BertAttention {
-            self_attention: BertSelfAttention::new(vs.sub("self"), config),
-            self_output: BertSelfOutput::new(vs.sub("output"), config),
+            self_attention: BertSelfAttention::new(vs / "self", config),
+            self_output: BertSelfOutput::new(vs / "output", config),
         }
     }
 
@@ -150,7 +150,7 @@ impl BertEmbeddings {
         };
 
         let word_embeddings = Embedding::new(
-            vs.sub("word_embeddings"),
+            vs / "word_embeddings",
             "embeddings",
             config.vocab_size,
             config.hidden_size,
@@ -158,7 +158,7 @@ impl BertEmbeddings {
         );
 
         let position_embeddings = Embedding::new(
-            vs.sub("position_embeddings"),
+            vs / "position_embeddings",
             "embeddings",
             config.max_position_embeddings,
             config.hidden_size,
@@ -166,7 +166,7 @@ impl BertEmbeddings {
         );
 
         let token_type_embeddings = Embedding::new(
-            vs.sub("token_type_embeddings"),
+            vs / "token_type_embeddings",
             "embeddings",
             config.type_vocab_size,
             config.hidden_size,
@@ -174,7 +174,7 @@ impl BertEmbeddings {
         );
 
         let layer_norm = LayerNorm::new(
-            vs.sub("layer_norm"),
+            vs / "layer_norm",
             vec![config.hidden_size],
             config.layer_norm_eps,
             true,
@@ -244,7 +244,7 @@ impl BertEncoder {
         let vs = vs.borrow();
 
         let layers = (0..config.num_hidden_layers)
-            .map(|layer| BertLayer::new(vs.sub(format!("layer_{}", layer)), config))
+            .map(|layer| BertLayer::new(vs / format!("layer_{}", layer), config))
             .collect::<Result<_, _>>()?;
 
         Ok(BertEncoder { layers })
@@ -296,7 +296,7 @@ impl BertIntermediate {
         Ok(BertIntermediate {
             activation,
             dense: bert_linear(
-                vs.sub("dense"),
+                vs / "dense",
                 config,
                 config.hidden_size,
                 config.intermediate_size,
@@ -326,9 +326,9 @@ impl BertLayer {
         let vs = vs.borrow();
 
         Ok(BertLayer {
-            attention: BertAttention::new(vs.sub("attention"), config),
-            intermediate: BertIntermediate::new(vs.sub("intermediate"), config)?,
-            output: BertOutput::new(vs.sub("output"), config),
+            attention: BertAttention::new(vs / "attention", config),
+            intermediate: BertIntermediate::new(vs / "intermediate", config)?,
+            output: BertOutput::new(vs / "output", config),
         })
     }
 
@@ -382,7 +382,7 @@ impl BertOutput {
         let vs = vs.borrow();
 
         let dense = bert_linear(
-            vs.sub("dense"),
+            vs / "dense",
             config,
             config.intermediate_size,
             config.hidden_size,
@@ -391,7 +391,7 @@ impl BertOutput {
         );
         let dropout = Dropout::new(config.hidden_dropout_prob);
         let layer_norm = LayerNorm::new(
-            vs.sub("layer_norm"),
+            vs / "layer_norm",
             vec![config.hidden_size],
             config.layer_norm_eps,
             true,
@@ -432,7 +432,7 @@ impl BertSelfAttention {
         let all_head_size = config.num_attention_heads * attention_head_size;
 
         let key = bert_linear(
-            vs.sub("key"),
+            vs / "key",
             config,
             config.hidden_size,
             all_head_size,
@@ -440,7 +440,7 @@ impl BertSelfAttention {
             "bias",
         );
         let query = bert_linear(
-            vs.sub("query"),
+            vs / "query",
             config,
             config.hidden_size,
             all_head_size,
@@ -448,7 +448,7 @@ impl BertSelfAttention {
             "bias",
         );
         let value = bert_linear(
-            vs.sub("value"),
+            vs / "value",
             config,
             config.hidden_size,
             all_head_size,
@@ -535,7 +535,7 @@ impl BertSelfOutput {
         let vs = vs.borrow();
 
         let dense = bert_linear(
-            vs.sub("dense"),
+            vs / "dense",
             config,
             config.hidden_size,
             config.hidden_size,
@@ -544,7 +544,7 @@ impl BertSelfOutput {
         );
         let dropout = Dropout::new(config.hidden_dropout_prob);
         let layer_norm = LayerNorm::new(
-            vs.sub("layer_norm"),
+            vs / "layer_norm",
             vec![config.hidden_size],
             config.layer_norm_eps,
             true,
@@ -648,12 +648,12 @@ mod hdf5_impl {
 
             Ok(BertAttention {
                 self_attention: BertSelfAttention::load_from_hdf5(
-                    vs.sub("self"),
+                    vs / "self",
                     config,
                     group.group("self")?,
                 )?,
                 self_output: BertSelfOutput::load_from_hdf5(
-                    vs.sub("output"),
+                    vs / "output",
                     config,
                     group.group("output")?,
                 )?,
@@ -693,11 +693,11 @@ mod hdf5_impl {
 
             Ok(BertEmbeddings {
                 word_embeddings: Embedding(word_embeddings)
-                    .place_in_var_store(vs.sub("word_embeddings")),
+                    .place_in_var_store(vs / "word_embeddings"),
                 position_embeddings: Embedding(position_embeddings)
-                    .place_in_var_store(vs.sub("position_embeddings")),
+                    .place_in_var_store(vs / "position_embeddings"),
                 token_type_embeddings: Embedding(token_type_embeddings)
-                    .place_in_var_store(vs.sub("token_type_embeddings")),
+                    .place_in_var_store(vs / "token_type_embeddings"),
 
                 layer_norm: LayerNorm::new_with_affine(
                     vec![config.hidden_size],
@@ -705,7 +705,7 @@ mod hdf5_impl {
                     weight,
                     bias,
                 )
-                .place_in_var_store(vs.sub("layer_norm")),
+                .place_in_var_store(vs / "layer_norm"),
                 dropout: Dropout::new(config.hidden_dropout_prob),
             })
         }
@@ -726,7 +726,7 @@ mod hdf5_impl {
             let layers = (0..config.num_hidden_layers)
                 .map(|idx| {
                     BertLayer::load_from_hdf5(
-                        vs.sub(format!("layer_{}", idx)),
+                        vs / format!("layer_{}", idx),
                         config,
                         group.group(&format!("layer_{}", idx))?,
                     )
@@ -766,7 +766,7 @@ mod hdf5_impl {
                     ws: dense_weight.tr(),
                     bs: dense_bias,
                 }
-                .place_in_var_store(vs.borrow().sub("dense")),
+                .place_in_var_store(vs.borrow() / "dense"),
             })
         }
     }
@@ -783,19 +783,15 @@ mod hdf5_impl {
         ) -> Result<Self, BertError> {
             let vs = vs.borrow();
 
-            let attention = BertAttention::load_from_hdf5(
-                vs.sub("attention"),
-                config,
-                group.group("attention")?,
-            )?;
+            let attention =
+                BertAttention::load_from_hdf5(vs / "attention", config, group.group("attention")?)?;
             let intermediate = BertIntermediate::load_from_hdf5(
-                vs.sub("intermediate"),
+                vs / "intermediate",
                 config,
                 group.group("intermediate")?,
             )?;
 
-            let output =
-                BertOutput::load_from_hdf5(vs.sub("output"), config, group.group("output")?)?;
+            let output = BertOutput::load_from_hdf5(vs / "output", config, group.group("output")?)?;
 
             Ok(BertLayer {
                 attention,
@@ -836,7 +832,7 @@ mod hdf5_impl {
                     ws: dense_weight.tr(),
                     bs: dense_bias,
                 }
-                .place_in_var_store(vs.sub("dense")),
+                .place_in_var_store(vs / "dense"),
                 dropout: Dropout::new(config.hidden_dropout_prob),
                 layer_norm: LayerNorm::new_with_affine(
                     vec![config.hidden_size],
@@ -844,7 +840,7 @@ mod hdf5_impl {
                     layer_norm_weight,
                     layer_norm_bias,
                 )
-                .place_in_var_store(vs.sub("layer_norm")),
+                .place_in_var_store(vs / "layer_norm"),
             })
         }
     }
@@ -897,17 +893,17 @@ mod hdf5_impl {
                     ws: key_weight.tr(),
                     bs: key_bias,
                 }
-                .place_in_var_store(vs.sub("key")),
+                .place_in_var_store(vs / "key"),
                 query: Linear {
                     ws: query_weight.tr(),
                     bs: query_bias,
                 }
-                .place_in_var_store(vs.sub("query")),
+                .place_in_var_store(vs / "query"),
                 value: Linear {
                     ws: value_weight.tr(),
                     bs: value_bias,
                 }
-                .place_in_var_store(vs.sub("value")),
+                .place_in_var_store(vs / "value"),
             })
         }
     }
@@ -943,7 +939,7 @@ mod hdf5_impl {
                     ws: dense_weight.tr(),
                     bs: dense_bias,
                 }
-                .place_in_var_store(vs.sub("dense")),
+                .place_in_var_store(vs / "dense"),
                 dropout: Dropout::new(config.hidden_dropout_prob),
                 layer_norm: LayerNorm::new_with_affine(
                     vec![config.hidden_size],
@@ -951,7 +947,7 @@ mod hdf5_impl {
                     layer_norm_weight,
                     layer_norm_bias,
                 )
-                .place_in_var_store(vs.sub("layer_norm")),
+                .place_in_var_store(vs / "layer_norm"),
             })
         }
     }
