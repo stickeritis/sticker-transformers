@@ -181,7 +181,7 @@ impl ScalarWeightClassifier {
             linear: Linear { ws, bs },
             non_linear,
             scalar_weight: ScalarWeight::new(
-                vs.sub("scalar_weight"),
+                vs / "scalar_weight",
                 config.n_layers,
                 config.layer_dropout_prob,
             ),
