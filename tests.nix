@@ -23,16 +23,22 @@ let
   buildRustCrate = pkgs.buildRustCrate.override {
     defaultCrateOverrides = crateOverrides;
   };
-  cargo_nix = pkgs.callPackage ./nix/Cargo.nix { inherit buildRustCrate; };
+  crateTools = import "${sources.crate2nix}/tools.nix" {};
+  cargoNix = pkgs.callPackage (crateTools.generatedCargoNix {
+    name = "sticker-transformers";
+    src = pkgs.nix-gitignore.gitignoreSource [ ".git/" "nix/" "*.nix" ] ./.;
+  }) {
+    inherit buildRustCrate;
+  };
 in [
   # Test with HDF5 support disabled.
-  (cargo_nix.rootCrate.build.override {
+  (cargoNix.rootCrate.build.override {
     features = [ "model-tests" ];
     runTests = true;
   })
 
   # Test with HDF5 support.
-  (cargo_nix.rootCrate.build.override {
+  (cargoNix.rootCrate.build.override {
     features = [ "load-hdf5" "model-tests" ];
     runTests = true;
   })
