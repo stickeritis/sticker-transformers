@@ -5,3 +5,6 @@
 .*
 *~
 [#]*
+
+# Nix build results
+/result*
