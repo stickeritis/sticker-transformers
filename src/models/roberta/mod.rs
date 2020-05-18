@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn xlm_roberta_embeddings() {
         let config = xlm_roberta_config();
-        let roberta_file = File::open(XLM_ROBERTA_BASE, "r").unwrap();
+        let roberta_file = File::open(XLM_ROBERTA_BASE).unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         let embeddings = RobertaEmbeddings::load_from_hdf5(
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn xlm_roberta_encoder() {
         let config = xlm_roberta_config();
-        let roberta_file = File::open(XLM_ROBERTA_BASE, "r").unwrap();
+        let roberta_file = File::open(XLM_ROBERTA_BASE).unwrap();
 
         let vs = VarStore::new(Device::Cpu);
         let embeddings = RobertaEmbeddings::load_from_hdf5(
