@@ -1,5 +1,7 @@
 //! Transformer models.
 
+pub mod albert;
+
 pub mod bert;
 pub use bert::{BertConfig, BertEmbeddings, BertEncoder};
 
