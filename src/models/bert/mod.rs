@@ -568,11 +568,12 @@ impl BertSelfOutput {
 fn bert_activations(activation_name: &str) -> Option<Box<dyn Module>> {
     match activation_name {
         "gelu" => Some(Box::new(activations::GELU)),
+        "gelu_new" => Some(Box::new(activations::GELUNew)),
         _ => None,
     }
 }
 
-fn bert_linear<'a>(
+pub(crate) fn bert_linear<'a>(
     vs: impl Borrow<Path<'a>>,
     config: &BertConfig,
     in_features: i64,

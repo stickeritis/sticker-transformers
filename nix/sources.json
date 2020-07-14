@@ -1,4 +1,11 @@
 {
+    "albert-base-v2": {
+        "sha256": "19ky0rixm3y9g74wix3n2hzp7bjmmjniyf4jgacz32zmi69m9ys6",
+        "type": "file",
+        "url": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/albert-base-v2.hdf5",
+        "url_template": "http://www.sfs.uni-tuebingen.de/a3-public-data/sticker2-models/albert-base-v2.hdf5",
+        "version": "1"
+    },
     "bert-base-german-cased": {
         "sha256": "17lps2a0j0im5maz2rrblcj9kn3xr329jd9h1a04czz4g0xncdzv",
         "type": "file",
