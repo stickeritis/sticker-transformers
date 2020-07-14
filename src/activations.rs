@@ -8,7 +8,7 @@ pub struct GELU;
 
 impl Module for GELU {
     fn forward(&self, input: &Tensor) -> Tensor {
-        input * 0.5 * (1.0 + (input / 2f64.sqrt()).erf())
+        input.gelu()
     }
 }
 
