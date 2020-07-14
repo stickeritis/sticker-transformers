@@ -70,7 +70,7 @@ impl BertAttention {
 
 /// Bert model configuration.
 #[serde(default)]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BertConfig {
     pub attention_probs_dropout_prob: f64,
     pub hidden_act: String,
