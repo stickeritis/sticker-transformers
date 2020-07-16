@@ -2,17 +2,15 @@
 
 use std::borrow::Borrow;
 
-use hdf5::Group;
 use serde::{Deserialize, Serialize};
 use tch::nn::{Linear, Module, ModuleT, Path};
 use tch::Tensor;
 
-use crate::hdf5_model::{load_affine, LoadFromHDF5};
-use crate::layers::PlaceInVarStore;
 use crate::models::bert::{
     bert_linear, BertConfig, BertEmbeddings, BertError, BertLayer, BertLayerOutput,
 };
 use crate::models::traits::WordEmbeddingsConfig;
+use crate::models::Encoder;
 use crate::util::LogitsMask;
 
 /// ALBERT model configuration.
@@ -134,28 +132,6 @@ impl AlbertEmbeddings {
     }
 }
 
-impl LoadFromHDF5 for AlbertEmbeddings {
-    type Config = AlbertConfig;
-
-    type Error = BertError;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Result<Self, Self::Error> {
-        let vs = vs.borrow();
-
-        // BERT uses the hidden size as the vocab size.
-        let mut bert_config: BertConfig = config.into();
-        bert_config.hidden_size = config.embedding_size;
-
-        let embeddings = BertEmbeddings::load_from_hdf5(vs, &bert_config, group)?;
-
-        Ok(AlbertEmbeddings { embeddings })
-    }
-}
-
 impl ModuleT for AlbertEmbeddings {
     fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         self.forward(input, None, None, train)
@@ -182,34 +158,6 @@ impl AlbertEmbeddingProjection {
         );
 
         AlbertEmbeddingProjection { projection }
-    }
-}
-
-impl LoadFromHDF5 for AlbertEmbeddingProjection {
-    type Config = AlbertConfig;
-
-    type Error = BertError;
-
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Result<Self, Self::Error> {
-        let (dense_weight, dense_bias) = load_affine(
-            group.group("embedding_projection")?,
-            "weight",
-            "bias",
-            config.embedding_size,
-            config.hidden_size,
-        )?;
-
-        Ok(AlbertEmbeddingProjection {
-            projection: Linear {
-                ws: dense_weight.tr(),
-                bs: dense_bias,
-            }
-            .place_in_var_store(vs.borrow() / "embedding_projection"),
-        })
     }
 }
 
@@ -245,22 +193,23 @@ impl AlbertEncoder {
             projection,
         })
     }
+}
 
-    /// Apply the encoder.
-    ///
-    /// Returns the output and attention per layer. The (optional)
-    /// attention mask of shape `[batch_size, time_steps]` indicates
-    /// which tokens should be included (`true`) and excluded (`false`) from
-    /// attention. This can be used to mask inactive timesteps.
-    pub fn forward_t(
+impl Encoder for AlbertEncoder {
+    fn encode(
         &self,
         input: &Tensor,
         attention_mask: Option<&Tensor>,
         train: bool,
     ) -> Vec<BertLayerOutput> {
+        let mut all_layer_outputs = Vec::with_capacity(self.n_layers as usize + 1);
+
         let input = self.projection.forward(&input);
 
-        let mut all_layer_outputs = Vec::with_capacity(self.n_layers as usize);
+        all_layer_outputs.push(BertLayerOutput {
+            output: input.shallow_clone(),
+            attention: None,
+        });
 
         let attention_mask = attention_mask.map(|mask| LogitsMask::from_bool_mask(mask));
 
@@ -276,43 +225,112 @@ impl AlbertEncoder {
 
         all_layer_outputs
     }
+
+    fn n_layers(&self) -> i64 {
+        self.n_layers + 1
+    }
 }
 
-impl LoadFromHDF5 for AlbertEncoder {
-    type Config = AlbertConfig;
+#[cfg(feature = "load-hdf5")]
+mod hdf5_impl {
+    use std::borrow::Borrow;
 
-    type Error = BertError;
+    use hdf5::Group;
+    use tch::nn::{Linear, Path};
 
-    fn load_from_hdf5<'a>(
-        vs: impl Borrow<Path<'a>>,
-        config: &Self::Config,
-        group: Group,
-    ) -> Result<Self, BertError> {
-        let vs = vs.borrow();
+    use crate::hdf5_model::{load_affine, LoadFromHDF5};
+    use crate::layers::PlaceInVarStore;
+    use crate::models::albert::{
+        AlbertConfig, AlbertEmbeddingProjection, AlbertEmbeddings, AlbertEncoder,
+    };
+    use crate::models::bert::{BertConfig, BertEmbeddings, BertError, BertLayer};
 
-        assert_eq!(
-            config.inner_group_num, 1,
-            "Only 1 inner group is supported, model has {}",
-            config.inner_group_num
-        );
-        assert_eq!(
-            config.num_hidden_groups, 1,
-            "Only 1 hidden group is supported, model has {}",
-            config.num_hidden_groups
-        );
+    impl LoadFromHDF5 for AlbertEmbeddings {
+        type Config = AlbertConfig;
 
-        let layer = BertLayer::load_from_hdf5(
-            vs.sub("group_0").sub("inner_group_0"),
-            &config.into(),
-            group.group("group_0/inner_group_0")?,
-        )?;
-        let projection = AlbertEmbeddingProjection::load_from_hdf5(vs, config, group)?;
+        type Error = BertError;
 
-        Ok(AlbertEncoder {
-            layer,
-            n_layers: config.num_hidden_layers,
-            projection,
-        })
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Result<Self, Self::Error> {
+            let vs = vs.borrow();
+
+            // BERT uses the hidden size as the vocab size.
+            let mut bert_config: BertConfig = config.into();
+            bert_config.hidden_size = config.embedding_size;
+
+            let embeddings = BertEmbeddings::load_from_hdf5(vs, &bert_config, group)?;
+
+            Ok(AlbertEmbeddings { embeddings })
+        }
+    }
+
+    impl LoadFromHDF5 for AlbertEmbeddingProjection {
+        type Config = AlbertConfig;
+
+        type Error = BertError;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Result<Self, Self::Error> {
+            let (dense_weight, dense_bias) = load_affine(
+                group.group("embedding_projection")?,
+                "weight",
+                "bias",
+                config.embedding_size,
+                config.hidden_size,
+            )?;
+
+            Ok(AlbertEmbeddingProjection {
+                projection: Linear {
+                    ws: dense_weight.tr(),
+                    bs: dense_bias,
+                }
+                .place_in_var_store(vs.borrow() / "embedding_projection"),
+            })
+        }
+    }
+
+    impl LoadFromHDF5 for AlbertEncoder {
+        type Config = AlbertConfig;
+
+        type Error = BertError;
+
+        fn load_from_hdf5<'a>(
+            vs: impl Borrow<Path<'a>>,
+            config: &Self::Config,
+            group: Group,
+        ) -> Result<Self, BertError> {
+            let vs = vs.borrow();
+
+            assert_eq!(
+                config.inner_group_num, 1,
+                "Only 1 inner group is supported, model has {}",
+                config.inner_group_num
+            );
+            assert_eq!(
+                config.num_hidden_groups, 1,
+                "Only 1 hidden group is supported, model has {}",
+                config.num_hidden_groups
+            );
+
+            let layer = BertLayer::load_from_hdf5(
+                vs.sub("group_0").sub("inner_group_0"),
+                &config.into(),
+                group.group("group_0/inner_group_0")?,
+            )?;
+            let projection = AlbertEmbeddingProjection::load_from_hdf5(vs, config, group)?;
+
+            Ok(AlbertEncoder {
+                layer,
+                n_layers: config.num_hidden_layers,
+                projection,
+            })
+        }
     }
 }
 
@@ -332,6 +350,7 @@ mod tests {
 
     use crate::hdf5_model::LoadFromHDF5;
     use crate::models::albert::{AlbertConfig, AlbertEmbeddings, AlbertEncoder};
+    use crate::models::Encoder;
 
     const ALBERT_BASE_V2: &str = env!("ALBERT_BASE_V2");
 
@@ -422,7 +441,7 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, None, false);
+        let all_hidden_states = encoder.encode(&embeddings, None, false);
 
         let summed_last_hidden =
             all_hidden_states
@@ -475,7 +494,7 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, Some(&attention_mask), false);
+        let all_hidden_states = encoder.encode(&embeddings, Some(&attention_mask), false);
 
         let summed_last_hidden =
             all_hidden_states

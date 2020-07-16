@@ -27,6 +27,7 @@ use thiserror::Error;
 use crate::activations;
 use crate::cow::CowTensor;
 use crate::layers::{Dropout, Embedding, LayerNorm};
+use crate::models::encoder::Encoder;
 use crate::models::traits::WordEmbeddingsConfig;
 use crate::traits::{LayerAttention, LayerOutput};
 use crate::util::LogitsMask;
@@ -249,14 +250,10 @@ impl BertEncoder {
 
         Ok(BertEncoder { layers })
     }
+}
 
-    /// Apply the encoder.
-    ///
-    /// Returns the output and attention per layer. The (optional)
-    /// attention mask of shape `[batch_size, time_steps]` indicates
-    /// which tokens should be included (`true`) and excluded (`false`) from
-    /// attention. This can be used to mask inactive timesteps.
-    pub fn forward_t(
+impl Encoder for BertEncoder {
+    fn encode(
         &self,
         input: &Tensor,
         attention_mask: Option<&Tensor>,
@@ -275,6 +272,10 @@ impl BertEncoder {
         }
 
         all_layer_outputs
+    }
+
+    fn n_layers(&self) -> i64 {
+        self.layers.len() as i64
     }
 }
 
@@ -344,7 +345,10 @@ impl BertLayer {
             .output
             .forward_t(&intermediate_output, &attention_output, train);
 
-        BertLayerOutput { output, attention }
+        BertLayerOutput {
+            output,
+            attention: Some(attention),
+        }
     }
 }
 
@@ -355,12 +359,12 @@ pub struct BertLayerOutput {
     pub output: Tensor,
 
     /// The layer attentions.
-    pub attention: Tensor,
+    pub attention: Option<Tensor>,
 }
 
 impl LayerAttention for BertLayerOutput {
-    fn layer_attention(&self) -> &Tensor {
-        &self.attention
+    fn layer_attention(&self) -> Option<&Tensor> {
+        self.attention.as_ref()
     }
 }
 
@@ -970,6 +974,7 @@ mod tests {
 
     use crate::hdf5_model::LoadFromHDF5;
     use crate::models::bert::{BertConfig, BertEmbeddings, BertEncoder, BertLayer};
+    use crate::models::Encoder;
 
     const BERT_BASE_GERMAN_CASED: &str = env!("BERT_BASE_GERMAN_CASED");
 
@@ -1125,7 +1130,7 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, None, false);
+        let all_hidden_states = encoder.encode(&embeddings, None, false);
 
         let summed_last_hidden =
             all_hidden_states
@@ -1179,7 +1184,7 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, Some(&attention_mask), false);
+        let all_hidden_states = encoder.encode(&embeddings, Some(&attention_mask), false);
 
         let summed_last_hidden = all_hidden_states
             .last()
