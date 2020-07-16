@@ -112,6 +112,7 @@ mod tests {
     use crate::hdf5_model::LoadFromHDF5;
     use crate::models::bert::{BertConfig, BertEncoder};
     use crate::models::roberta::RobertaEmbeddings;
+    use crate::models::Encoder;
 
     const XLM_ROBERTA_BASE: &str = env!("XLM_ROBERTA_BASE");
 
@@ -199,7 +200,7 @@ mod tests {
 
         let embeddings = embeddings.forward_t(&pieces, false);
 
-        let all_hidden_states = encoder.forward_t(&embeddings, None, false);
+        let all_hidden_states = encoder.encode(&embeddings, None, false);
 
         let summed_last_hidden =
             all_hidden_states

@@ -343,11 +343,11 @@ mod tests {
         );
 
         let layer1 = BertLayerOutput {
-            attention: Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu)),
+            attention: Some(Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu))),
             output: Tensor::zeros(&[1, 3, 8], (Kind::Float, Device::Cpu)),
         };
         let layer2 = BertLayerOutput {
-            attention: Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu)),
+            attention: Some(Tensor::zeros(&[1, 3, 2], (Kind::Float, Device::Cpu))),
             output: Tensor::zeros(&[1, 3, 8], (Kind::Float, Device::Cpu)),
         };
 
