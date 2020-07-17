@@ -175,20 +175,32 @@ impl Module for AlbertEmbeddingProjection {
 /// 2. Weights are shared between layers.
 #[derive(Debug)]
 pub struct AlbertEncoder {
-    layer: BertLayer,
+    groups: Vec<BertLayer>,
     n_layers: i64,
     projection: AlbertEmbeddingProjection,
 }
 
 impl AlbertEncoder {
     pub fn new<'a>(vs: impl Borrow<Path<'a>>, config: &AlbertConfig) -> Result<Self, BertError> {
+        assert!(
+            config.num_hidden_groups > 0,
+            "Need at least 1 hidden group, got: {}",
+            config.num_hidden_groups
+        );
+
         let vs = vs.borrow();
 
-        let layer = BertLayer::new(vs.sub("group_0").sub("inner_group_0"), &config.into())?;
+        let mut groups = Vec::with_capacity(config.num_hidden_groups as usize);
+        for group_idx in 0..config.num_hidden_groups {
+            groups.push(BertLayer::new(
+                vs.sub(format!("group_{}", group_idx)).sub("inner_group_0"),
+                &config.into(),
+            )?);
+        }
         let projection = AlbertEmbeddingProjection::new(vs, config);
 
         Ok(AlbertEncoder {
-            layer,
+            groups,
             n_layers: config.num_hidden_layers,
             projection,
         })
@@ -213,13 +225,18 @@ impl Encoder for AlbertEncoder {
 
         let attention_mask = attention_mask.map(|mask| LogitsMask::from_bool_mask(mask));
 
+        let layers_per_group = self.n_layers as usize / self.groups.len();
+
         let mut hidden_states = input;
-        for _ in 0..self.n_layers {
-            let layer_output = self
-                .layer
-                .forward_t(&hidden_states, attention_mask.as_ref(), train);
+        for idx in 0..self.n_layers {
+            let layer_output = self.groups[idx as usize / layers_per_group].forward_t(
+                &hidden_states,
+                attention_mask.as_ref(),
+                train,
+            );
 
             hidden_states = layer_output.output.shallow_clone();
+
             all_layer_outputs.push(layer_output);
         }
 
@@ -305,6 +322,12 @@ mod hdf5_impl {
             config: &Self::Config,
             group: Group,
         ) -> Result<Self, BertError> {
+            assert!(
+                config.num_hidden_groups > 0,
+                "Need at least 1 hidden group, got: {}",
+                config.num_hidden_groups
+            );
+
             let vs = vs.borrow();
 
             assert_eq!(
@@ -318,15 +341,18 @@ mod hdf5_impl {
                 config.num_hidden_groups
             );
 
-            let layer = BertLayer::load_from_hdf5(
-                vs.sub("group_0").sub("inner_group_0"),
-                &config.into(),
-                group.group("group_0/inner_group_0")?,
-            )?;
+            let mut groups = Vec::with_capacity(config.num_hidden_groups as usize);
+            for group_idx in 0..config.num_hidden_groups {
+                groups.push(BertLayer::load_from_hdf5(
+                    vs.sub(format!("group_{}", group_idx)).sub("inner_group_0"),
+                    &config.into(),
+                    group.group(&format!("group_{}/inner_group_0", group_idx))?,
+                )?);
+            }
             let projection = AlbertEmbeddingProjection::load_from_hdf5(vs, config, group)?;
 
             Ok(AlbertEncoder {
-                layer,
+                groups,
                 n_layers: config.num_hidden_layers,
                 projection,
             })
