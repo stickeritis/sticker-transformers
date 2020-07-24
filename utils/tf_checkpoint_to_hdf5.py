@@ -15,6 +15,7 @@ parser.add_argument(
     metavar='CHECKPOINT',
     help='The checkpoint base path')
 parser.add_argument('hdf5', metavar='HDF5', help='HDF5 output')
+parser.add_argument('--albert', action='store_true', default=False, help="Convert an ALBERT model")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -35,6 +36,16 @@ if __name__ == "__main__":
             renamedVar = var.replace("kernel", "weight")
             renamedVar = renamedVar.replace("gamma", "weight")
             renamedVar = renamedVar.replace("beta", "bias")
+
+            if args.albert:
+                renamedVar = renamedVar.replace("bert", "albert")
+                renamedVar = renamedVar.replace("encoder/embedding_hidden_mapping_in", "encoder/embedding_projection")
+                renamedVar = renamedVar.replace("attention_1", "attention")
+                renamedVar = renamedVar.replace("ffn_1/", "")
+                renamedVar = renamedVar.replace("intermediate/output", "output")
+                renamedVar = renamedVar.replace("transformer/", "")
+                renamedVar = renamedVar.replace("LayerNorm_1", "output/LayerNorm")
+                renamedVar = renamedVar.replace("inner_group_0/LayerNorm", "inner_group_0/attention/output/LayerNorm")
 
             print("Adding %s..." % renamedVar, file=sys.stderr)
 
