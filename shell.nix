@@ -4,9 +4,9 @@
 let
   sources = import ./nix/sources.nix;
   nixpkgs = import sources.nixpkgs {};
-  danieldk = nixpkgs.callPackage sources.danieldk {};
+  sticker = nixpkgs.callPackage sources.sticker {};
   mozilla = nixpkgs.callPackage "${sources.mozilla}/package-set.nix" {};
-  libtorch = danieldk.libtorch.v1_5_0;
+  libtorch = sticker.libtorch.v1_6_0;
 in with nixpkgs; mkShell {
   nativeBuildInputs = [
     mozilla.latest.rustChannels.stable.rust
@@ -21,7 +21,7 @@ in with nixpkgs; mkShell {
 
   propagatedBuildInputs = [
     (python3.withPackages (ps: with ps; [
-      danieldk.python3Packages.pytorch.v1_4_0
+      #danieldk.python3Packages.pytorch.v1_4_0
       h5py
       tensorflow-bin
     ]))

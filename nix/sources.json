@@ -25,18 +25,6 @@
         "url": "https://github.com/kolloch/crate2nix/archive/0fd65ca7def611ad9d0ee532be0954d4b0bbb4d4.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
-    "danieldk": {
-        "branch": "libtorch-1.5.0",
-        "description": "My Nix package set",
-        "homepage": "",
-        "owner": "danieldk",
-        "repo": "nix-packages",
-        "rev": "4a555f09c678ba168238370a4176a2aefd54274c",
-        "sha256": "1zgafv4hsvzpjc2r601dzdbzmz9q8xcivzg2wgr6vi02bf375zqi",
-        "type": "tarball",
-        "url": "https://github.com/danieldk/nix-packages/archive/4a555f09c678ba168238370a4176a2aefd54274c.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
     "mozilla": {
         "branch": "master",
         "description": "mozilla related nixpkgs (extends nixos/nixpkgs repo)",
@@ -49,18 +37,6 @@
         "url": "https://github.com/mozilla/nixpkgs-mozilla/archive/d46240e8755d91bc36c0c38621af72bf5c489e13.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
-    "niv": {
-        "branch": "master",
-        "description": "Easy dependency management for Nix projects",
-        "homepage": "https://github.com/nmattia/niv",
-        "owner": "nmattia",
-        "repo": "niv",
-        "rev": "444c1ad4896ace10b97ab5becede1ceeced0a90c",
-        "sha256": "199nhdwlnk4wn4kgqyjq9z5cwlajjq7j3i4f54ihc1l9b9rggfd8",
-        "type": "tarball",
-        "url": "https://github.com/nmattia/niv/archive/444c1ad4896ace10b97ab5becede1ceeced0a90c.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
     "nixpkgs": {
         "branch": "nixos-20.03",
         "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
@@ -71,6 +47,18 @@
         "sha256": "09mp6vqs0h71g27w004yrz1jxla31ihf18phw69wj61ix74ac4m0",
         "type": "tarball",
         "url": "https://github.com/nixos/nixpkgs-channels/archive/025deb80b2412e5b7e88ea1de631d1bd65af1840.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "sticker": {
+        "branch": "master",
+        "description": "Nix package set for sticker, models, and bindings",
+        "homepage": null,
+        "owner": "stickeritis",
+        "repo": "nix-packages",
+        "rev": "910016f67e3418c05a55f5d899156b3d4c9c1e9e",
+        "sha256": "10amzdiz1yl6dvay0px4yp2flwzsc8xrpdqnsdad64ild0a687xi",
+        "type": "tarball",
+        "url": "https://github.com/stickeritis/nix-packages/archive/910016f67e3418c05a55f5d899156b3d4c9c1e9e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "xlm-roberta-base": {
