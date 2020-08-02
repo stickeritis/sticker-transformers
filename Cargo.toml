@@ -20,7 +20,7 @@ exclude = [
 [dependencies]
 hdf5 = { version = "0.6", optional = true }
 serde = { version = "1", features = ["derive"] }
-tch = "= 0.1.7"
+tch = "= 0.2.0"
 thiserror = "1"
 
 [dev-dependencies]
