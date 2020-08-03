@@ -55,10 +55,10 @@
         "homepage": null,
         "owner": "stickeritis",
         "repo": "nix-packages",
-        "rev": "910016f67e3418c05a55f5d899156b3d4c9c1e9e",
-        "sha256": "10amzdiz1yl6dvay0px4yp2flwzsc8xrpdqnsdad64ild0a687xi",
+        "rev": "3688f0cef0d709273188a64b2af8c8e34f066f10",
+        "sha256": "0pqdfrx6n20d6g15l95qvrjy756rq1mcarf4i58bga1gkzmb1hip",
         "type": "tarball",
-        "url": "https://github.com/stickeritis/nix-packages/archive/910016f67e3418c05a55f5d899156b3d4c9c1e9e.tar.gz",
+        "url": "https://github.com/stickeritis/nix-packages/archive/3688f0cef0d709273188a64b2af8c8e34f066f10.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "xlm-roberta-base": {
